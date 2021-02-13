@@ -5,6 +5,7 @@ from random import random
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from sklearn.model_selection import RandomizedSearchCV
 
 params = {'p_fwd':50,
           'lags': 1}
@@ -21,12 +22,11 @@ df['Predicted'] = model_fit.predict()
 df.columns = ['Demand', 'Predicted']
 df = df.reset_index()
 
-# create and show plot
-ax = df.plot(x='index', y="Demand", legend=False)
-ax2 = ax.twinx()
-df.plot(x='index', y="Predicted", ax=ax2, legend=False, color="r")
-ax.figure.legend()
-# plt.show()
+parameters = {'lags': range(0, 10)}
+
+# randomsearch
+rm = RandomizedSearchCV(estimator=model, param_distributions=parameters)
+
 
 # create evaluation dataframe
 df_eval = df.iloc[params['lags']:, :]
