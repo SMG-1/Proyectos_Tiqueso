@@ -350,19 +350,23 @@ class Application:
             return df
 
     def clean_data(self, df):
+        """Cleans the time series data."""
 
         df['Fecha'] = df['Fecha'].dt.date
 
+        # todo: pendiente ajustarlo para columnas codigo-canal en vez de solo codigo
         df = df.groupby(df.columns[:-1].to_list()).sum().reset_index()
 
+        # set date as index
         df.set_index(['Fecha'], inplace=True)
-
         df.index = pd.DatetimeIndex(df.index).to_period('D')
 
         return df
 
     def create_new_datasets(self, df: pd.DataFrame):
+        """Separate the original data into n datasets, where n is the number of unique data combinations in the df."""
 
+        # todo: ahorita agarra solo el codigo, ajustar para codigo-canal
         unique_combinations = [uni for uni in df.iloc[:, 0].unique()]
         col_name = df.columns[0]
         df_list = []
@@ -375,6 +379,7 @@ class Application:
         return datasets_dict
 
     def evaluate_fit(self, data, fitted_values):
+        """"""
 
         df_real_fitted = pd.concat([data, fitted_values], axis=1)
         df_real_fitted.columns = ['Demanda', 'Pronóstico']
@@ -431,7 +436,6 @@ class Application:
             self.get_best_model(df.iloc[:, -1], 'autoreg', params)
 
         return dfs
-
 
 
 if __name__ == '__main__':
