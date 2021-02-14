@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import os
 import shelve
+from itertools import product
 
 pd.options.mode.chained_assignment = None
 
@@ -341,7 +342,7 @@ class Application:
 
         if path.endswith('.csv'):
             print('Reading CSV.')
-            df = pd.read_csv(path)
+            df = pd.read_csv(path, sep=";", decimal="," ,header=0)
             return df
 
         elif path.endswith('.xlsx'):
@@ -351,6 +352,9 @@ class Application:
 
     def clean_data(self, df):
         """Cleans the time series data."""
+
+        df['Fecha'] = pd.to_datetime(df['Fecha'])
+        df.iloc[:, -1] = pd.to_numeric(df.iloc[:, -1])
 
         df['Fecha'] = df['Fecha'].dt.date
 
@@ -405,21 +409,21 @@ class Application:
 
         if model_name == 'autoreg':
 
-            for lag in parameters['lags']:
-                for trend in parameters['trend']:
+            for i in product(*parameters.values()):
+                temp_dict = dict(zip(parameters.keys(), i))
 
-                    model = AutoReg(data, lags=lag, trend=trend, old_names=False)
+                model = AutoReg(data, lags=temp_dict['lags'], trend=temp_dict['trend'], old_names=False)
 
-                    fitted_model = model.fit()
+                fitted_model = model.fit()
 
-                    fitted_values = fitted_model.predict()
+                fitted_values = fitted_model.predict()
 
-                    score = self.evaluate_fit(data, fitted_values)
+                score = self.evaluate_fit(data, fitted_values)
 
-                    if score < score_best:
-                        lags_best = lag
-                        trends_best = trend
-                        score_best = score
+                if score < score_best:
+                    lags_best = temp_dict['lags']
+                    trends_best = temp_dict['trend']
+                    score_best = score
 
             print(f'Best score {score_best}. Lags: {lags_best}, trend: {trends_best}.')
 
@@ -442,6 +446,7 @@ if __name__ == '__main__':
     root_path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
 
     app = Application(root_path)
-    app.set_path('Demand', r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.xlsx")
+    # app.set_path('Demand', r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.xlsx")
+    app.set_path('Demand', r"C:\Users\smirand27701\Desktop\Nueva carpeta\Ventas sample.csv")
 
     test = app.workflow()
