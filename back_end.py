@@ -398,7 +398,7 @@ class Application:
 
         mae = df_eval['Abs_Error'].mean()
 
-        mae_perc = mae / df_eval['Demanda'].mean()
+        # mae_perc = mae / df_eval['Demanda'].mean()
 
         return mae
 
@@ -432,8 +432,8 @@ class Application:
         df = self.clean_data(df)
         dfs = self.create_new_datasets(df)
 
-        params = {'lags': range(1, 15, 1),
-                  'trend': ['c', 'ct', 't']}
+        params = {'lags': range(1, 20, 1),
+                  'trend': ['ct', 'c']}
 
         for key, df in dfs.items():
             print(f'Getting best parameters for {key}')
