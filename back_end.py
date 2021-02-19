@@ -1,5 +1,6 @@
 # back_end.py - Backend para leer datos históricos, ejecutar pronósticos, calcular errores, mostrar gráficos y
 #                comparar entre modelos.
+import copy
 
 from statsmodels.tsa.ar_model import AutoReg
 from statsmodels.tools.eval_measures import rmse
@@ -300,7 +301,11 @@ class Application:
         self.config_shelf = ConfigShelf(self.path_)
 
         # master data variable
-        self._data = pd.DataFrame()
+        self.data_ = pd.DataFrame()
+        self.separate_data_sets = {}
+
+        # available forecasting models
+        self.models = ['Auto-regresión']
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -334,53 +339,103 @@ class Application:
     def read_data(self):
         """Returns pandas dataframe with time series data."""
 
+        # Get Demand path from parameters shelf
         path = self.file_paths_shelf.send_path('Demand')
 
         if path == '':
             err = "El directorio hacia el archivo de demanda no esta definido."
             raise ValueError(err)
 
+        # if file ends with CSV, read as CSV
         if path.endswith('.csv'):
             print('Reading CSV.')
-            df = pd.read_csv(path, sep=";", decimal="," ,header=0)
+            df = pd.read_csv(path, sep=",", decimal=",", header=0)
             return df
 
+        # if file ends with xlsx, read as Excel
         elif path.endswith('.xlsx'):
             print('Reading Excel.')
             df = pd.read_excel(path)
             return df
 
-    def clean_data(self, df):
-        """Cleans the time series data."""
+    def clean_data(self):
+        """Cleans the time series data.
+        First column is assumed to have datetime like values.
+        Second column is assumed to be SKU.
+        Third column is assumed to be the SKUs name.
+        Last column is assumed to be the demand values, numerical.
+        Columns in between the third and the last are treated as extra aggregation parameters for the forecast."""
 
-        df['Fecha'] = pd.to_datetime(df['Fecha'])
-        df.iloc[:, -1] = pd.to_numeric(df.iloc[:, -1])
+        df = self.read_data()
 
+        # change column names
+        mapping = {df.columns[0]: 'Fecha',
+                   df.columns[1]: 'Codigo',
+                   df.columns[2]: 'Nombre',
+                   df.columns[-1]: 'Demanda'}
+
+        df = df.rename(columns=mapping)
+
+        # convert first column to datetime or raise ValueError
+        try:
+            df['Fecha'] = pd.to_datetime(df['Fecha'])
+        except ValueError:
+            raise ValueError('Error: en la primera columna de los datos de entrada hay filas que no contienen fechas.')
+
+        # convert last column to numerical or raise ValueError
+        try:
+            df.iloc[:, -1] = pd.to_numeric(df.iloc[:, -1])
+        except ValueError:
+            raise ValueError('Error: en la ultima columna de los datos de entrada hay filas que no contienen'
+                             ' datos numericos.')
+
+        # extract date from datetime values
         df['Fecha'] = df['Fecha'].dt.date
 
-        # todo: pendiente ajustarlo para columnas codigo-canal en vez de solo codigo
+        # group demand by date and categorical features (sum)
         df = df.groupby(df.columns[:-1].to_list()).sum().reset_index()
 
         # set date as index
         df.set_index(['Fecha'], inplace=True)
         df.index = pd.DatetimeIndex(df.index).to_period('D')
 
-        return df
+        # save df as a class attribute
+        self.data_ = df
 
-    def create_new_datasets(self, df: pd.DataFrame):
+    def create_new_data_sets(self):
         """Separate the original data into n datasets, where n is the number of unique data combinations in the df."""
 
+        # Clean data upon function call
+        self.clean_data()
+
+        # variable to set the unique values
+        var_name = 'Nombre'
+
+        # create copy to be able to modify the dataset
+        df = copy.deepcopy(self.data_)
+
         # todo: ahorita agarra solo el codigo, ajustar para codigo-canal
-        unique_combinations = [uni for uni in df.iloc[:, 0].unique()]
-        col_name = df.columns[0]
+        unique_combinations = [uni for uni in df.loc[:, var_name].unique()]
         df_list = []
 
+        # for all the unique var_name values, get the filtered dataframe and add to list
         for unique in unique_combinations:
-            df_list.append(df[df[col_name] == unique])
+            df_list.append(df[df[var_name] == unique])
 
-        datasets_dict = dict(zip(unique_combinations, df_list))
+        # create total demand df grouped by date
+        grouped_df = df.reset_index()
+        grouped_df = grouped_df.groupby('Fecha').sum().reset_index()
 
-        return datasets_dict
+        # append grouped df to list, and label as Total
+        unique_combinations.append('Total')
+        df_list.append(grouped_df)
+
+        # create dictionary from zipped lists
+        data_sets_dict = dict(zip(unique_combinations, df_list))
+
+        # assign the dictionary to class attribute
+        self.separate_data_sets = data_sets_dict
+
 
     def evaluate_fit(self, data, fitted_values):
         """"""
@@ -390,7 +445,6 @@ class Application:
         df_real_fitted = df_real_fitted.reset_index()
 
         df_eval = df_real_fitted.dropna()
-        # df_eval = df_real_fitted.iloc[lag:, :]
 
         df_eval.loc[:, 'Error'] = df_eval['Pronóstico'] - df_eval['Demanda']
 
