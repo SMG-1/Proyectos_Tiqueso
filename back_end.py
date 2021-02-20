@@ -15,45 +15,83 @@ pd.options.mode.chained_assignment = None
 
 plt.style.use('ggplot')
 
+
 def generate_testing_data():
     # generar data de prueba
     data = pd.DataFrame(np.random.randint(10, size=(100,)))
     return data
 
+
 class AutoRegression(AutoReg):
-    def __init__(self, endog, lags):
-        super().__init__(endog, lags)
+    def __init__(self, endog, lags, periods_fwd):
+        super().__init__(endog, lags, old_names=False)
 
         self.df = pd.DataFrame(endog)
+        self.periods_fwd = periods_fwd
 
-        AutoReg.old_names = False
+        self.var_names = ['Demanda', 'Pronóstico']
 
+        self.fitted_model = None
         self.df_real_vs_fitted = None
+        self.predictions = None
 
     def fit_predict(self):
+        # get model fitted to the input data
+        self.fitted_model = self.fit()
 
+        # predict on original index to obtain fitted values
+        fitted_vals = self.fitted_model.predict()
 
-        predictions = self.fit().predict()
-        predictions = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(predictions) + self.ar_lags[0], 1)],
-                             data=predictions)
+        # convert fitted values to Dataframe using lag as first item on index
+        # ex: if lags = 1, index starts on 1
+        fitted_vals = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(fitted_vals) + self.ar_lags[0], 1)],
+                                   data=fitted_vals)
 
-        df_tot = pd.concat([self.df, predictions], axis=1)
+        # add the fitted values to the original data as a new column
+        df_tot = pd.concat([self.df, fitted_vals], axis=1)
 
-        df_tot.columns = ['Demanda', 'Pronóstico']
+        # change column names
+        df_tot.columns = self.var_names
 
+        # assign to instance attribute
         self.df_real_vs_fitted = df_tot
 
         return df_tot
 
-    def show_plot(self):
+    def show_plot_fitted(self):
+        """Show plot of original data vs fitted values."""
 
+        # create a copy to reset index, without changing the original dataframe
         df = copy.deepcopy(self.df_real_vs_fitted)
         df = df.reset_index()
-        # create and show plot
-        ax =df.plot(x='index', y='Demanda', legend=False)
+
+        # create plot with index as X value, and demand as y value
+        ax = df.plot(x='index', y='Demanda', legend=False)
         ax2 = ax.twinx()
         df.plot(x='index', y='Pronóstico', ax=ax2, legend=False, color="r")
         ax.figure.legend()
+        plt.show()
+
+    def predict_fwd(self):
+        """Predict N periods forward using self.periods_fwd as N."""
+
+        # set an index from original X shape, to periods_fwd for new predictions
+        self.predictions = pd.DataFrame(index=[i for i in range(self.df.shape[0], self.df.shape[0] + self.periods_fwd)])
+
+        # use the native predict method to populate the index
+        self.predictions.loc[:, 0] = self.fitted_model.predict(self.predictions.index[0], self.predictions.index[-1])
+
+        # create dataframe with original data and predictions
+        self.df_real_preds = pd.concat([self.df, self.predictions], axis=0)
+
+        return self.df_real_preds
+
+
+    def show_plot_predicted(self):
+        fig, ax = plt.subplots()
+        ax.plot(self.df_real_preds.loc[self.df_real_preds.index <= self.df.shape[0]], label=self.var_names[0])
+        ax.plot(self.df_real_preds.loc[self.df_real_preds.index >= self.df.shape[0]], label=self.var_names[1])
+        leg = ax.legend()
         plt.show()
 
 
@@ -158,6 +196,11 @@ class AutoRegression2:
 
 
 class FilePathShelf:
+    @staticmethod
+    def close_shelf(shelf: shelve):
+
+        shelf.close()
+
     def __init__(self, _path):
 
         # path to save the shelve files
@@ -188,9 +231,7 @@ class FilePathShelf:
 
         return paths_shelf
 
-    def close_shelf(self, shelf: shelve):
 
-        shelf.close()
 
     def write_to_shelf(self, file_name, path_):
         """Set value (path_) to key (file_name)."""
@@ -252,13 +293,14 @@ class ConfigShelf:
         config_shelf = shelve.open(os.path.join(self._path, self._shelve_name))
 
         # set keys list
-        self.default_dict = {'model': ['autoreg'],
-                             'autoreg_params': {'lags': 1,
-                                                'trend': 'c',
-                                                'n_forward': 50}}
+        self.model_dict = {'AutoReg': {'params': {'lags': 1,
+                                               'trend': 'ct',
+                                               'n_forward': 50},
+                                    'possible_values': {'lags': list(range(1, 50, 1)),
+                                                        'trend': ['n', 'ct', 'c', 't']}}}
 
         # try to get value from key, if empty initialize
-        for key, value in self.default_dict.items():
+        for key, value in self.model_dict.items():
             try:
                 config_shelf[key]
             except KeyError:
@@ -282,9 +324,9 @@ class ConfigShelf:
         # open saved values
         shelf = self.open_shelf()
 
-        if value not in self.default_dict.keys():
+        if value not in self.model_dict.keys():
             raise ValueError(f'You tried to save {parameter} to the dictionary. '
-                             f'The accepted values are {self.default_dict.keys()}.')
+                             f'The accepted values are {self.model_dict.keys()}.')
 
         # set value to key
         shelf[value] = parameter
@@ -311,7 +353,7 @@ class ConfigShelf:
 
         shelf = self.open_shelf()
 
-        if parameter not in self.default_dict.keys():
+        if parameter not in self.model_dict.keys():
             raise ValueError(f'{parameter} is not a valid parameter.')
 
         value = shelf[parameter]
@@ -473,7 +515,6 @@ class Application:
 
         # assign the dictionary to class attribute
         self.separate_data_sets = data_sets_dict
-
 
     def evaluate_fit(self, data, fitted_values):
         """"""
