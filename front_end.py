@@ -14,6 +14,7 @@ import pandastable
 
 plt.style.use('ggplot')
 
+
 def center_window(toplevel, screen_width, screen_height):
     """Funcion para centrar las ventanas."""
     toplevel.update_idletasks()
@@ -27,7 +28,6 @@ def center_window(toplevel, screen_width, screen_height):
 
 class Main:
     def __init__(self, master, root_path):
-
         # tkinter root
         self.master = master
 
@@ -54,11 +54,16 @@ class Main:
         main_menu = Menu(self.master)
 
         # sub menu
-        sub_menu = Menu(main_menu, tearoff=False)
-        sub_menu.add_command(label="Cambiar directorios")
+        sub_menu_file = Menu(main_menu, tearoff=False)
+        sub_menu_model = Menu(main_menu, tearoff=False)
+        sub_menu_file.add_command(label="Cambiar directorios")
+        sub_menu_file.add_command(label="Cargar información",
+                                  command=self.open_window_select_work_path)
+        sub_menu_model.add_command(label='Configurar modelo')
 
         # sub menu cascade
-        main_menu.add_cascade(label='Configuración', menu=sub_menu)
+        main_menu.add_cascade(label='Archivo', menu=sub_menu_file)
+        main_menu.add_cascade(label='Configuración', menu=sub_menu_model)
 
         # configure menu in toplevel
         self.master.config(menu=main_menu)
@@ -75,17 +80,12 @@ class Main:
         # --- DECLARACION DE FRAMES CONTENEDORES ---
         # Frame contenedor para visualizacion de graficos y tablas
         self.frame_display = Frame(self.main_frame,
-                                        # text='Visualizar',
-                                        # width=self.width * (4 / 5) - 200,
-                                        # height=self.height,
-                                        bg=bg_color)
+                                   bg=bg_color)
         self.frame_display.pack(fill=BOTH, side=LEFT)
 
         # --- Frame contenedor para parametros y ajustes
         self.frame_config = LabelFrame(self.main_frame,
                                        text='Configuración',
-                                       # width=self.width * (1 / 5) - 200,
-                                       # height=self.height,
                                        bg=bg_color)
         self.frame_config.pack(fill=BOTH, side=RIGHT)
 
@@ -113,14 +113,14 @@ class Main:
                                     padx=10,
                                     pady=10,
                                     command=self.open_window_select_work_path)
-        self.btn_load_data.grid(row=0, column=0, columnspan=1, padx=20, pady=10)
+        self.btn_load_data.grid(row=0, column=1, columnspan=1, padx=20, pady=10)
 
         # Boton para recomendar modelo
         self.btn_rec_model = Button(self.frame_config,
                                     text='Recomendar modelo',
                                     padx=10,
                                     pady=10)
-        self.btn_rec_model.grid(row=1, column=0, columnspan=1, padx=20, pady=10)
+        self.btn_rec_model.grid(row=1, column=1, columnspan=1, padx=20, pady=10)
 
         # --- NIVEL 3 ---
 
@@ -162,12 +162,11 @@ class Main:
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
         # Combobox: available SKUs
-        sku_options_list = self.back_end.separate_data_sets.keys()
+        # sku_options_list = self.back_end.separate_data_sets.keys()
 
         center_window(self.master, self.screen_width, self.screen_height)
 
     def show_raw_data_plot(self, event):
-
         # get dictionary of datasets
         sep_df_list = self.back_end.separate_data_sets
 
@@ -181,9 +180,6 @@ class Main:
         self.line_plot = FigureCanvasTkAgg(self.figure, self.frame_plot)
         self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH)
 
-        #
-        print(self.combobox_choose_sku.get())
-
         # filter the dictionary using the current selected combobox value
         df = sep_df_list[self.combobox_choose_sku.get()]
 
@@ -192,26 +188,41 @@ class Main:
         df = df.groupby('Fecha').sum().reset_index()
         df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax)
 
+    def update_sku_combobox(self):
+        """set a new combobox on the choose_sku combobox that assings the sku name to its options, and assign the
+         combobox to the same location in the grid"""
 
-    def open_window_select_work_path(self):
-        self.new_win = Toplevel(self.master)
-        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
-        # WindowPopUpMessage(self.new_win, "test", "test", self.screen_width, self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
         self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
                                                 value=list(self.back_end.separate_data_sets.keys()))
         self.combobox_choose_sku.current(0)
         self.combobox_choose_sku.bind("<<ComboboxSelected>>",
-                                        self.show_raw_data_plot)
-                                        # self.combo_box_callback)
+                                      self.show_raw_data_plot)
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
-        # self.show_raw_data_plot('Total')
+    def open_window_select_work_path(self):
+        """Open TopLevel to select path where the input files are located."""
 
-    def combo_box_callback(self, sku):
-        print('shit')
+        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
+        # this new window is closed
+        self.new_win = Toplevel(self.master)
+        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
+        # update combobox with new data
+        self.update_sku_combobox()
+
+    def open_window_config_model(self):
+
+        # get selected model
+        chosen_model = self.combobox_choose_model.get()
+
+        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
+        # this new window is closed
+        self.new_win = Toplevel(self.master)
+        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
 class WindowSelectWorkPath:
     def __init__(self, master, app: Application, screen_width_, screen_height_):
@@ -328,6 +339,16 @@ class WindowPopUpMessage:
 
     def close_window(self):
         self.master.destroy()
+
+
+class ConfigModel:
+    def __init__(self, master, app:Application, screen_width, screen_height):
+        self.master = master
+        self.app = app
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+
+
 
 
 class ThreadedClient(threading.Thread):
