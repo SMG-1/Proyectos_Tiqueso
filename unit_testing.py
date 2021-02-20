@@ -1,16 +1,15 @@
-from back_end import *
+import os
+import threading
+from tkinter import *
+from tkinter import ttk
+from tkinter import filedialog
+from back_end import Application
+import time
+from win32api import GetSystemMetrics
+import pandastable
 
-model = AutoRegression(periods_fwd=50, lags=1)
-
-X = model.generate_testing_data()
-
-model.fit(X.iloc[:, 0])
-
-model.evaluate_fit()
-
-predictions = model.predict()
-
-model.plot_predicted()
+dicte = {'a': 1, 'b':2, 'c':3}
+print(list(dicte.keys()))
 
 
 
