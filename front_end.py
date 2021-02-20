@@ -7,10 +7,12 @@ from back_end import Application
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
+from matplotlib import pyplot as plt
 import time
 from win32api import GetSystemMetrics
 import pandastable
 
+plt.style.use('ggplot')
 
 def center_window(toplevel, screen_width, screen_height):
     """Funcion para centrar las ventanas."""
@@ -25,14 +27,24 @@ def center_window(toplevel, screen_width, screen_height):
 
 class Main:
     def __init__(self, master, root_path):
+
+        # tkinter root
         self.master = master
+
+        # window parameters
         self.master.title("Módulo de Demanda - COPROLAC")
         self.master.configure(background=bg_color)
+
+        # screen width and height, and toplevel width and height
         self.screen_width = GetSystemMetrics(0)
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
         self.height = self.screen_height
+
+        # application instance
         self.back_end = Application(root_path)
+
+        #
         self.new_win = None
         self.figure = ""
         self.ax = ""
@@ -41,37 +53,39 @@ class Main:
         # --- DECLARACION DE DROPDOWN MENU - TOOLBAR ---
         main_menu = Menu(self.master)
 
+        # sub menu
         sub_menu = Menu(main_menu, tearoff=False)
+        sub_menu.add_command(label="Cambiar directorios")
 
+        # sub menu cascade
         main_menu.add_cascade(label='Configuración', menu=sub_menu)
 
-        sub_menu.add_command(label="Cambiar directorios")
-        # command=lambda: WindowPaths(Toplevel(), self.application))
-
+        # configure menu in toplevel
         self.master.config(menu=main_menu)
 
         # ---NIVEL 0 ---
         self.main_frame = Frame(self.master,
-                                width=self.screen_width,
-                                height=self.screen_height)
+                                # width=self.screen_width,
+                                # height=self.screen_height
+                                )
         self.main_frame.pack()
 
         # --- NIVEL 1 ---
 
         # --- DECLARACION DE FRAMES CONTENEDORES ---
         # Frame contenedor para visualizacion de graficos y tablas
-        self.frame_display = LabelFrame(self.main_frame,
-                                        text='Visualizar',
-                                        width=self.width * (4 / 5) - 200,
-                                        height=self.height,
+        self.frame_display = Frame(self.main_frame,
+                                        # text='Visualizar',
+                                        # width=self.width * (4 / 5) - 200,
+                                        # height=self.height,
                                         bg=bg_color)
         self.frame_display.pack(fill=BOTH, side=LEFT)
 
         # --- Frame contenedor para parametros y ajustes
         self.frame_config = LabelFrame(self.main_frame,
                                        text='Configuración',
-                                       width=self.width * (1 / 5) - 200,
-                                       height=self.height,
+                                       # width=self.width * (1 / 5) - 200,
+                                       # height=self.height,
                                        bg=bg_color)
         self.frame_config.pack(fill=BOTH, side=RIGHT)
 
@@ -80,7 +94,7 @@ class Main:
         # Frame para desplegar graficos
         self.frame_plot = LabelFrame(self.frame_display,
                                      text='Gráfico',
-                                     width=self.width * (4 / 5),
+                                     width=self.width * (2 / 5),
                                      height=self.height / 2,
                                      bg=bg_color)
         self.frame_plot.pack(side=TOP, fill=BOTH)
@@ -88,8 +102,8 @@ class Main:
         # Frame para desplegar status e informacion
         self.frame_status = LabelFrame(self.frame_display,
                                        text='Estado',
-                                       width=self.width * (4 / 5),
-                                       height=self.height / 2,
+                                       width=self.width * (2 / 5),
+                                       height=self.height / 3,
                                        bg=bg_color)
         self.frame_status.pack(side=BOTTOM, fill=BOTH)
 
