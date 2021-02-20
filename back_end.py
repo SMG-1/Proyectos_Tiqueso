@@ -13,14 +13,51 @@ from itertools import product
 
 pd.options.mode.chained_assignment = None
 
+plt.style.use('ggplot')
 
 def generate_testing_data():
     # generar data de prueba
     data = pd.DataFrame(np.random.randint(10, size=(100,)))
     return data
 
+class AutoRegression(AutoReg):
+    def __init__(self, endog, lags):
+        super().__init__(endog, lags)
 
-class AutoRegression:
+        self.df = pd.DataFrame(endog)
+
+        AutoReg.old_names = False
+
+        self.df_real_vs_fitted = None
+
+    def fit_predict(self):
+
+
+        predictions = self.fit().predict()
+        predictions = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(predictions) + self.ar_lags[0], 1)],
+                             data=predictions)
+
+        df_tot = pd.concat([self.df, predictions], axis=1)
+
+        df_tot.columns = ['Demanda', 'Pronóstico']
+
+        self.df_real_vs_fitted = df_tot
+
+        return df_tot
+
+    def show_plot(self):
+
+        df = copy.deepcopy(self.df_real_vs_fitted)
+        df = df.reset_index()
+        # create and show plot
+        ax =df.plot(x='index', y='Demanda', legend=False)
+        ax2 = ax.twinx()
+        df.plot(x='index', y='Pronóstico', ax=ax2, legend=False, color="r")
+        ax.figure.legend()
+        plt.show()
+
+
+class AutoRegression2:
     def __init__(self, periods_fwd: int, lags: int, trend):
         self.periods_fwd = periods_fwd
         self.lags = lags
@@ -362,13 +399,14 @@ class Application:
         """Cleans the time series data.
         First column is assumed to have datetime like values.
         Second column is assumed to be SKU.
-        Third column is assumed to be the SKUs name.
+        Third column is assumed to be the name of the SKU.
         Last column is assumed to be the demand values, numerical.
         Columns in between the third and the last are treated as extra aggregation parameters for the forecast."""
 
+        # read the data
         df = self.read_data()
 
-        # change column names
+        # rename columns with dictionary
         mapping = {df.columns[0]: 'Fecha',
                    df.columns[1]: 'Codigo',
                    df.columns[2]: 'Nombre',
