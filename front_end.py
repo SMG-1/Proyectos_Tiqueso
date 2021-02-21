@@ -5,6 +5,7 @@ from tkinter import ttk
 from tkinter import filedialog
 from back_end import Application
 from back_end import AutoRegression
+from back_end import ConfigShelf
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
@@ -388,12 +389,15 @@ class ConfigModel:
         self.btn_accept.grid(row=1, column=0)
 
         self.btn_cancel = Button(self.master,
-                                 text='Cancelar')
+                                 text='Cancelar',
+                                 command=self.close_window)
         self.btn_cancel.grid(row=1, column=1)
 
         # --- LEVEL 1: CONFIG WIDGETS ---
         # get possible values for all parameters from dictionary of models and parameters
-        model_params = self.app.config_shelf.model_dict[self.model]['possible_values']
+        shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+        print('shit', shelf_dict)
+        model_params = shelf_dict[self.model]['possible_values']
 
         # loop over all the items in the possible values dictionary
         for idx, item in enumerate(model_params.items()):
@@ -407,15 +411,25 @@ class ConfigModel:
 
             # according to the type, choose type of widget
             if type(item[1]) == list:
+                shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+                val = shelf_dict[self.model]['params'][item[0]]
+
+                try:
+                    val = int(val)
+                    
+                except:
+                    pass
+
                 widget = ttk.Combobox(self.main_frame, value=item[1])
-                widget.current(0)
+                widget.current(item[1].index(val))
                 widget.bind("<<ComboboxSelected>>", print('hola'))
                 widget.grid(row=idx, column=1, padx=10)
 
                 self.dict_selected[item[0]] = widget
 
             if type(item[1]) == type:
-                entry_val = self.app.config_shelf.model_dict[self.model]['params'][item[0]]
+                shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+                entry_val = shelf_dict[self.model]['params'][item[0]]
                 widget = Entry(self.main_frame, width=30)
                 widget.insert(END, entry_val)
                 widget.grid(row=idx, column=1, padx=10)
@@ -427,7 +441,13 @@ class ConfigModel:
 
         for key, widget in self.dict_selected.items():
             val = widget.get()
-            self.app.config_shelf.write_to_shelf(parameter=key, value=val, model=self.model)
+            shelf_dict = ConfigShelf(self.app.path_config_shelf)
+            shelf_dict.write_to_shelf(parameter=key, value=val, model=self.model)
+
+        self.close_window()
+
+    def close_window(self):
+        self.master.destroy()
 
 
 class ThreadedClient(threading.Thread):
