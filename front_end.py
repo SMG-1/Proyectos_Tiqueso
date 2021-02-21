@@ -4,6 +4,7 @@ from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
 from back_end import Application
+from back_end import AutoRegression
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
                                                NavigationToolbar2Tk)
@@ -59,7 +60,8 @@ class Main:
         sub_menu_file.add_command(label="Cambiar directorios")
         sub_menu_file.add_command(label="Cargar información",
                                   command=self.open_window_select_work_path)
-        sub_menu_model.add_command(label='Configurar modelo')
+        sub_menu_model.add_command(label='Configurar modelo',
+                                   command=self.open_window_config_model)
 
         # sub menu cascade
         main_menu.add_cascade(label='Archivo', menu=sub_menu_file)
@@ -107,21 +109,6 @@ class Main:
                                        bg=bg_color)
         self.frame_status.pack(side=BOTTOM, fill=BOTH)
 
-        # Boton para cargar datos
-        self.btn_load_data = Button(self.frame_config,
-                                    text='Cargar datos',
-                                    padx=10,
-                                    pady=10,
-                                    command=self.open_window_select_work_path)
-        self.btn_load_data.grid(row=0, column=1, columnspan=1, padx=20, pady=10)
-
-        # Boton para recomendar modelo
-        self.btn_rec_model = Button(self.frame_config,
-                                    text='Recomendar modelo',
-                                    padx=10,
-                                    pady=10)
-        self.btn_rec_model.grid(row=1, column=1, columnspan=1, padx=20, pady=10)
-
         # --- NIVEL 3 ---
 
         # LabelFrame para contener modelos y ajustes de parametros
@@ -130,7 +117,7 @@ class Main:
                                         width=self.screen_width / 6,
                                         height=self.screen_height / 3,
                                         bg=bg_color)
-        self.frame_modeler.grid(row=2, column=0, columnspan=2, padx=10, pady=10)
+        self.frame_modeler.grid(row=2, column=0, columnspan=1, padx=10, pady=10)
 
         # Label: Model
         self.lbl_choose_model_title = Label(self.frame_modeler,
@@ -161,8 +148,12 @@ class Main:
 
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
-        # Combobox: available SKUs
-        # sku_options_list = self.back_end.separate_data_sets.keys()
+        # Button to run forecast
+        self.btn_run_fcst = Button(self.frame_modeler,
+                                   text='Ejecutar modelo',
+                                   padx=10,
+                                   command=self.run_forecast)
+        self.btn_run_fcst.grid(row=2, column=0, columnspan=2, pady=10)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
@@ -199,6 +190,35 @@ class Main:
                                       self.show_raw_data_plot)
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
+    def run_forecast(self):
+        # get dictionary of datasets
+        sep_df_list = self.back_end.separate_data_sets
+
+        # filter the dictionary using the current selected combobox value
+        df = sep_df_list[self.combobox_choose_sku.get()]
+
+        # get selected model
+        selected_model = self.combobox_choose_model.get()
+
+        if selected_model == 'Auto-regresión':
+            model_ = 'AutoReg'
+
+            params = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in
+                      ['lags', 'trend', 'n_forward']]
+
+            # self.back_end.config_shelf.send_parameter('lags')
+
+            df = df.iloc[:, -1]
+
+            model = AutoRegression(df.values, lags=params[0], trend=params[1], periods_fwd=params[2])
+            df_tot = model.fit_predict()
+            test = model.predict_fwd()
+
+            # TODO: SHOW PLOTS
+
+            print(df_tot.head())
+            print(test.sample())
+
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
 
@@ -213,16 +233,16 @@ class Main:
         self.update_sku_combobox()
 
     def open_window_config_model(self):
-
         # get selected model
         chosen_model = self.combobox_choose_model.get()
 
         # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
         # this new window is closed
         self.new_win = Toplevel(self.master)
-        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        ConfigModel(self.new_win, self.back_end, self.screen_width, self.screen_height, chosen_model)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
 
 class WindowSelectWorkPath:
     def __init__(self, master, app: Application, screen_width_, screen_height_):
@@ -342,13 +362,72 @@ class WindowPopUpMessage:
 
 
 class ConfigModel:
-    def __init__(self, master, app:Application, screen_width, screen_height):
+    def __init__(self, master, app: Application, screen_width, screen_height, model: str):
         self.master = master
         self.app = app
         self.screen_width = screen_width
         self.screen_height = screen_height
+        self.model = model
 
+        # dictionary to save models with respective widgets
+        self.dict_selected = {}
 
+        if self.model == 'Auto-regresión':
+            self.model = 'AutoReg'
+
+        # --- LEVEL 0: LABEL FRAME AND BUTTONS
+        self.main_frame = LabelFrame(self.master,
+                                     text='Configuración',
+                                     padx=10,
+                                     pady=10)
+        self.main_frame.grid(row=0, column=0, columnspan=2)
+
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=self.save_to_shelf)
+        self.btn_accept.grid(row=1, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar')
+        self.btn_cancel.grid(row=1, column=1)
+
+        # --- LEVEL 1: CONFIG WIDGETS ---
+        # get possible values for all parameters from dictionary of models and parameters
+        model_params = self.app.config_shelf.model_dict[self.model]['possible_values']
+
+        # loop over all the items in the possible values dictionary
+        for idx, item in enumerate(model_params.items()):
+
+            # set parameter name to label
+            lbl = Label(self.main_frame,
+                        text=item[0])
+            lbl.grid(row=idx, column=0)
+
+            print('type', type(item[1]))
+
+            # according to the type, choose type of widget
+            if type(item[1]) == list:
+                widget = ttk.Combobox(self.main_frame, value=item[1])
+                widget.current(0)
+                widget.bind("<<ComboboxSelected>>", print('hola'))
+                widget.grid(row=idx, column=1, padx=10)
+
+                self.dict_selected[item[0]] = widget
+
+            if type(item[1]) == type:
+                entry_val = self.app.config_shelf.model_dict[self.model]['params'][item[0]]
+                widget = Entry(self.main_frame, width=30)
+                widget.insert(END, entry_val)
+                widget.grid(row=idx, column=1, padx=10)
+
+                self.dict_selected[item[0]] = widget
+
+    def save_to_shelf(self):
+        """Save chosen parameters to the config shelf."""
+
+        for key, widget in self.dict_selected.items():
+            val = widget.get()
+            self.app.config_shelf.write_to_shelf(parameter=key, value=val, model=self.model)
 
 
 class ThreadedClient(threading.Thread):
