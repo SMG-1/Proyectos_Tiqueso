@@ -19,11 +19,11 @@ preds = pd.DataFrame(index=[i for i in range(auto.ar_lags[0], len(preds) + auto.
 
 dftot = pd.concat([df, preds], axis=1)"""
 
-auto = AutoRegression(data.values, 4, 50)
+"""auto = AutoRegression(data.values, 4, 50)
 df_tot = auto.fit_predict()
 # auto.show_plot_fitted()
 test = auto.predict_fwd()
-auto.show_plot_predicted()
+auto.show_plot_predicted()"""
 
 
 default_dict = {'AutoReg': {'params': {'lags': 1,
@@ -31,4 +31,21 @@ default_dict = {'AutoReg': {'params': {'lags': 1,
                                        'n_forward': 50},
                             'possible_values': {'lags': list(range(1, 50, 1)),
                                                 'trend':['ct', 'c', 't']}}}
-print(default_dict['AutoReg']['params']['lags'])
+
+
+from back_end import ConfigShelf
+import os
+import shelve
+
+# shelf = ConfigShelf(os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda'))
+
+shelf = shelve.open(os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda\config'))
+print(shelf['AutoReg'])
+
+shelf['AutoReg']['params']['lags']
+
+for key, value in shelf.items():
+    print('wtf', key, value)
+
+test = shelf.send_dict()
+test['AutoReg']
