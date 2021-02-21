@@ -206,11 +206,8 @@ class FilePathShelf:
         # path to save the shelve files
         self._path = _path
 
-        # shelf key
-        self._shelve_name = 'paths'
-
         # open shelve
-        paths_shelf = shelve.open(os.path.join(self._path, self._shelve_name))
+        paths_shelf = shelve.open(self._path)
 
         # set keys list
         self._shelve_keys = ['Working', 'Demand']
@@ -227,7 +224,7 @@ class FilePathShelf:
         paths_shelf.close()
 
     def open_shelf(self):
-        paths_shelf = shelve.open(os.path.join(self._path, self._shelve_name))
+        paths_shelf = shelve.open(self._path)
 
         return paths_shelf
 
@@ -284,11 +281,8 @@ class ConfigShelf:
         # path to save the shelve files
         self._path = _path
 
-        # shelf key
-        self._shelve_name = 'config'
-
         # open shelve
-        config_shelf = shelve.open(os.path.join(self._path, self._shelve_name))
+        config_shelf = shelve.open(self._path)
 
         # set keys list
         self.model_dict = {'AutoReg': {'params': {'lags': 1,
@@ -308,8 +302,8 @@ class ConfigShelf:
         # close shelf
         config_shelf.close()
 
-    def open_shelf(self):
-        shelf = shelve.open(os.path.join(self._path, self._shelve_name))
+    def open_shelf(self, writeback:bool):
+        shelf = shelve.open(self._path, writeback=writeback)
 
         return shelf
 
@@ -321,20 +315,18 @@ class ConfigShelf:
         """Set value (value) to key (parameter)."""
 
         # open saved values
-        shelf = self.open_shelf()
+        # shelf = self.open_shelf(True)
+
+        shelf = shelve.open(self._path, writeback=True)
 
         if 'model' in kwargs.keys():
             model_ = kwargs['model']
 
             shelf[model_]['params'][parameter] = value
 
-
-        """if value not in self.model_dict.keys():
-            raise ValueError(f'You tried to save {parameter} to the dictionary. '
-                             f'The accepted values are {self.model_dict.keys()}.')"""
-
-        # set value to key
-        shelf[value] = parameter
+        else:
+            # set value to key
+            shelf[value] = parameter
 
         self.model_dict = shelf
 
@@ -344,7 +336,7 @@ class ConfigShelf:
     def print_shelf(self):
         """Print the shelf."""
 
-        shelf = self.open_shelf()
+        shelf = self.open_shelf(False)
 
         for key, value in shelf.items():
             print(key, ': ', value)
@@ -358,7 +350,7 @@ class ConfigShelf:
     def send_parameter(self, parameter, **kwargs):
         """Return value from key (parameter)."""
 
-        shelf = self.open_shelf()
+        shelf = self.open_shelf(False)
 
         """if parameter not in self.model_dict.keys():
             raise ValueError(f'{parameter} is not a valid parameter.')"""
@@ -376,6 +368,14 @@ class ConfigShelf:
 
         return value
 
+    def send_dict(self):
+        shelf = self.open_shelf(False)
+
+        dict_ = dict(shelf)
+
+        self.close_shelf(shelf)
+
+        return dict_
 
 class Application:
 
@@ -383,14 +383,16 @@ class Application:
 
         # installation path
         self.path_ = path_
+        self.path_config_shelf = os.path.join(path_, 'config')
+        self.path_file_paths = os.path.join(path_, 'paths')
 
         # initial routine
         if not self.check_if_installed():
             self.setup()
 
         # shelves for storing data in computer memory
-        self.file_paths_shelf = FilePathShelf(self.path_)
-        self.config_shelf = ConfigShelf(self.path_)
+        self.file_paths_shelf = FilePathShelf(self.path_file_paths)
+        self.config_shelf = ConfigShelf(self.path_config_shelf)
 
         # master data variable
         self.data_ = pd.DataFrame()
