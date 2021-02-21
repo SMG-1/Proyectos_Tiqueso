@@ -23,10 +23,11 @@ def generate_testing_data():
 
 
 class AutoRegression(AutoReg):
-    def __init__(self, endog, lags, periods_fwd):
-        super().__init__(endog, lags, old_names=False)
+    def __init__(self, endog, lags, trend, periods_fwd):
+        super().__init__(endog, lags, trend=trend, old_names=False)
 
         self.df = pd.DataFrame(endog)
+
         self.periods_fwd = periods_fwd
 
         self.var_names = ['Demanda', 'Pronóstico']
@@ -85,7 +86,6 @@ class AutoRegression(AutoReg):
         self.df_real_preds = pd.concat([self.df, self.predictions], axis=0)
 
         return self.df_real_preds
-
 
     def show_plot_predicted(self):
         fig, ax = plt.subplots()
@@ -231,8 +231,6 @@ class FilePathShelf:
 
         return paths_shelf
 
-
-
     def write_to_shelf(self, file_name, path_):
         """Set value (path_) to key (file_name)."""
 
@@ -294,10 +292,11 @@ class ConfigShelf:
 
         # set keys list
         self.model_dict = {'AutoReg': {'params': {'lags': 1,
-                                               'trend': 'ct',
-                                               'n_forward': 50},
-                                    'possible_values': {'lags': list(range(1, 50, 1)),
-                                                        'trend': ['n', 'ct', 'c', 't']}}}
+                                                  'trend': 'ct',
+                                                  'n_forward': 50},
+                                       'possible_values': {'lags': list(range(1, 50, 1)),
+                                                           'trend': ['n', 'ct', 'c', 't'],
+                                                           'n_forward': int}}}
 
         # try to get value from key, if empty initialize
         for key, value in self.model_dict.items():
@@ -318,18 +317,26 @@ class ConfigShelf:
 
         shelf.close()
 
-    def write_to_shelf(self, parameter, value):
+    def write_to_shelf(self, parameter, value, **kwargs):
         """Set value (value) to key (parameter)."""
 
         # open saved values
         shelf = self.open_shelf()
 
-        if value not in self.model_dict.keys():
+        if 'model' in kwargs.keys():
+            model_ = kwargs['model']
+
+            shelf[model_]['params'][parameter] = value
+
+
+        """if value not in self.model_dict.keys():
             raise ValueError(f'You tried to save {parameter} to the dictionary. '
-                             f'The accepted values are {self.model_dict.keys()}.')
+                             f'The accepted values are {self.model_dict.keys()}.')"""
 
         # set value to key
         shelf[value] = parameter
+
+        self.model_dict = shelf
 
         # save and close shelf
         self.close_shelf(shelf)
@@ -348,15 +355,21 @@ class ConfigShelf:
         # save and close shelf
         self.close_shelf(shelf)
 
-    def send_parameter(self, parameter):
+    def send_parameter(self, parameter, **kwargs):
         """Return value from key (parameter)."""
 
         shelf = self.open_shelf()
 
-        if parameter not in self.model_dict.keys():
-            raise ValueError(f'{parameter} is not a valid parameter.')
+        """if parameter not in self.model_dict.keys():
+            raise ValueError(f'{parameter} is not a valid parameter.')"""
 
-        value = shelf[parameter]
+        if 'model' in kwargs.keys():
+            model_ = kwargs['model']
+
+            value = shelf[model_]['params'][parameter]
+
+        else:
+            value = shelf[parameter]
 
         # save and close shelf
         self.close_shelf(shelf)
