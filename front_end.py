@@ -48,9 +48,10 @@ class Main:
 
         #
         self.new_win = None
-        self.figure = ""
-        self.ax = ""
-        self.line_plot = ""
+        self.figure = None
+        self.ax = None
+        self.ax_2 = None
+        self.line_plot = None
 
         # --- DECLARACION DE DROPDOWN MENU - TOOLBAR ---
         main_menu = Menu(self.master)
@@ -158,27 +159,46 @@ class Main:
 
         center_window(self.master, self.screen_width, self.screen_height)
 
+    def create_fig(self, df, x, y, type, **kwargs):
+        # if line plot isn't empty, destroy the widget before adding a new one
+        if self.line_plot is not None:
+            self.line_plot.get_tk_widget().destroy()
+
+        # add matplotlib Figure
+        self.figure = Figure(figsize=((self.width * (2 / 5)) / 96, (self.height / 2) / 96), dpi=96)
+        self.ax = self.figure.add_subplot(1, 1, 1)
+        self.line_plot = FigureCanvasTkAgg(self.figure, self.frame_plot)
+        self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH)
+
+        if type == 'Demand':
+            df.plot(x=x, y=y, legend=False, ax=self.ax)
+
+        if type == 'Fitted':
+            # create plot with index as X value, and demand as y value
+            df.plot(x=x, y=y, color='b', ax=self.ax)
+            df.plot(x=x, y=kwargs['y2'], color='r', ax=self.ax)
+
+        if type == 'Forecast':
+
+            df.iloc[:kwargs['idx']+1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
+            df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
+
+
+
     def show_raw_data_plot(self, event):
         # get dictionary of datasets
         sep_df_list = self.back_end.separate_data_sets
 
-        # if line plot isn't empty, destroy the widget before adding a new one
-        if self.line_plot != "":
-            self.line_plot.get_tk_widget().destroy()
-
-        # add a matplotlib figure
-        self.figure = Figure(figsize=((self.width * (4 / 5)) / 96, (self.height / 2) / 96), dpi=96)
-        self.ax = self.figure.add_subplot(111)
-        self.line_plot = FigureCanvasTkAgg(self.figure, self.frame_plot)
-        self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH)
-
         # filter the dictionary using the current selected combobox value
         df = sep_df_list[self.combobox_choose_sku.get()]
+        x = 'Fecha'
+        y = 'Demanda'
 
         # get date column, and groupby date, finally plot demand vs date using the declared figure axis
         df = df.reset_index()
         df = df.groupby('Fecha').sum().reset_index()
-        df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax)
+
+        self.create_fig(df, x, y, 'Demand')
 
     def update_sku_combobox(self):
         """set a new combobox on the choose_sku combobox that assings the sku name to its options, and assign the
@@ -204,18 +224,36 @@ class Main:
         if selected_model == 'Auto-regresión':
             model_ = 'AutoReg'
 
-            params = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in
-                      ['lags', 'trend', 'n_forward']]
+            param_names = ['lags', 'trend', 'periods_fwd']
 
-            # self.back_end.config_shelf.send_parameter('lags')
+            param_values = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in
+                            ['lags', 'trend', 'periods_fwd']]
 
+            for idx, param in enumerate(param_values):
+                try:
+                    param_values[idx] = int(param)
+                except ValueError:
+                    print('wololo')
+
+            param_dict = dict(zip(param_names, param_values))
+
+            # get only column of values of the dataframe
             df = df.iloc[:, -1]
 
-            model = AutoRegression(df.values, lags=params[0], trend=params[1], periods_fwd=params[2])
+            model = AutoRegression(df.values, lags=param_dict['lags'],
+                                   trend=param_dict['trend'],
+                                   periods_fwd=param_dict['periods_fwd'])
+
             df_tot = model.fit_predict()
             test = model.predict_fwd()
 
-            # TODO: SHOW PLOTS
+            df_tot = df_tot.reset_index()
+            # self.create_fig(df_tot, x='index', y='Demanda', type='Fitted', y2='Pronóstico')
+
+            test = test.reset_index()
+            test.columns = ['index', 'Demanda']
+            self.create_fig(test, x='index', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
+
 
             print(df_tot.head())
             print(test.sample())
@@ -396,54 +434,72 @@ class ConfigModel:
         # --- LEVEL 1: CONFIG WIDGETS ---
         # get possible values for all parameters from dictionary of models and parameters
         shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
-        print('shit', shelf_dict)
+
+        # get possible values key of active model
         model_params = shelf_dict[self.model]['possible_values']
 
         # loop over all the items in the possible values dictionary
         for idx, item in enumerate(model_params.items()):
+
+            # the enumerate function returns and index as idx and a tuple as item
+            # the first item of the tuple is the parameter name
+            # the second item of the tuple is the parameter value
 
             # set parameter name to label
             lbl = Label(self.main_frame,
                         text=item[0])
             lbl.grid(row=idx, column=0)
 
-            print('type', type(item[1]))
-
             # according to the type, choose type of widget
+            # if the itemtype is a list, the widget must be a combobox with said list as possible values
             if type(item[1]) == list:
-                shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+                # shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+
+                # get the current parameter value from the params key of the dictionary
                 val = shelf_dict[self.model]['params'][item[0]]
 
                 try:
+                    # try to convert to int
                     val = int(val)
-                    
-                except:
+                except ValueError:
                     pass
 
+                # declare combobox with the values as the possible parameter values
                 widget = ttk.Combobox(self.main_frame, value=item[1])
                 widget.current(item[1].index(val))
-                widget.bind("<<ComboboxSelected>>", print('hola'))
                 widget.grid(row=idx, column=1, padx=10)
 
+                # set widget type to key of dict selected, to save parameters to the right key
                 self.dict_selected[item[0]] = widget
 
+            # if the item type is type, the widget must be an entry to allow for user input
             if type(item[1]) == type:
-                shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+                # shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+
+                # get the current parameter value from the params key of the dictionary
                 entry_val = shelf_dict[self.model]['params'][item[0]]
                 widget = Entry(self.main_frame, width=30)
                 widget.insert(END, entry_val)
                 widget.grid(row=idx, column=1, padx=10)
 
+                # set widget type to key of dict selected, to save parameters to the right key
                 self.dict_selected[item[0]] = widget
 
     def save_to_shelf(self):
         """Save chosen parameters to the config shelf."""
 
+        # loop over the saved parameters
         for key, widget in self.dict_selected.items():
+            # get current value from the widget
             val = widget.get()
+
+            # declare ConfigShelf instance to be able to write to the shelf
             shelf_dict = ConfigShelf(self.app.path_config_shelf)
+
+            # write to shelf using the key as a parameter, and the value currently selected with the widget as value
             shelf_dict.write_to_shelf(parameter=key, value=val, model=self.model)
 
+        # close window after saving
         self.close_window()
 
     def close_window(self):
