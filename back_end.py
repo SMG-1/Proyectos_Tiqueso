@@ -287,10 +287,10 @@ class ConfigShelf:
         # set keys list
         self.model_dict = {'AutoReg': {'params': {'lags': 1,
                                                   'trend': 'ct',
-                                                  'n_forward': 50},
+                                                  'periods_fwd': 50},
                                        'possible_values': {'lags': list(range(1, 50, 1)),
                                                            'trend': ['n', 'ct', 'c', 't'],
-                                                           'n_forward': int}}}
+                                                           'periods_fwd': int}}}
 
         # try to get value from key, if empty initialize
         for key, value in self.model_dict.items():
@@ -302,7 +302,7 @@ class ConfigShelf:
         # close shelf
         config_shelf.close()
 
-    def open_shelf(self, writeback:bool):
+    def open_shelf(self, writeback: bool):
         shelf = shelve.open(self._path, writeback=writeback)
 
         return shelf
@@ -376,6 +376,7 @@ class ConfigShelf:
         self.close_shelf(shelf)
 
         return dict_
+
 
 class Application:
 
