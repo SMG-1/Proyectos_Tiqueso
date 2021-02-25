@@ -218,42 +218,37 @@ class Main:
         # get selected model
         selected_model = self.combobox_choose_model.get()
 
-        if selected_model == 'Auto-regresión':
-            model_ = 'AutoReg'
+        df_fitted = self.back_end.fit_to_data(df, selected_model)
 
-            param_names = self.back_end.config_shelf.send_dict()['params'].keys()
+        df_pred = self.back_end.predict_future()
 
-            # param_names = ['lags', 'trend', 'periods_fwd']
 
-            param_values = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in param_names]
+        # todo: hacer combobox para escoger vista, entrenamiento del modelo (vista y data)
+        # prediccion futura del modelo (vista y data) y seleccionar figura dependiendo del combobox
 
-            for idx, param in enumerate(param_values):
-                try:
-                    param_values[idx] = int(param)
-                except ValueError:
-                    print('wololo')
+        fict_combobox_type = ['Gráfico', 'Tabla']
+        fict_combobox_result = ['Entrenamiento', 'Predicción']
 
-            param_dict = dict(zip(param_names, param_values))
 
-            # get only column of values of the dataframe
-            df = df.iloc[:, -1]
+        viz_type = fict_combobox_type[0]
+        result_ = fict_combobox_result[0]
 
-            model = AutoRegression(df.values, lags=param_dict['lags'],
-                                   trend=param_dict['trend'],
-                                   periods_fwd=param_dict['periods_fwd'])
+        if viz_type == 'Gráfico' and result_ == 'Entrenamiento':
 
-            df_tot = model.fit_predict()
-            test = model.predict_fwd()
+            self.create_fig(df_fitted, x='Fecha', y='Demanda', type='Fitted', y2='Pronóstico')
 
-            df_tot = df_tot.reset_index()
-            # self.create_fig(df_tot, x='index', y='Demanda', type='Fitted', y2='Pronóstico')
+        elif viz_type == 'Gráfico' and result_ == 'Predicción':
 
-            test = test.reset_index()
-            test.columns = ['index', 'Demanda']
-            self.create_fig(test, x='index', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
+            # test.columns = ['index', 'Demanda']
+            self.create_fig(df_pred, x='index', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
 
-            print(df_tot.head())
-            print(test.sample())
+        elif viz_type == 'Tabla' and result_ == 'Entrenamiento':
+
+            print(df_fitted.head())
+
+        else:
+            print(df_pred.head())
+
 
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
@@ -488,8 +483,6 @@ class ConfigModel:
 
     def save_to_shelf(self):
         """Save chosen parameters to the config shelf."""
-
-        # todo: corregir esto
 
         # loop over the saved parameters
         for key, widget in self.dict_selected.items():
