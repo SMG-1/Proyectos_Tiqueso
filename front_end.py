@@ -179,11 +179,8 @@ class Main:
             df.plot(x=x, y=kwargs['y2'], color='r', ax=self.ax)
 
         if type == 'Forecast':
-
-            df.iloc[:kwargs['idx']+1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
+            df.iloc[:kwargs['idx'] + 1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
             df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
-
-
 
     def show_raw_data_plot(self, event):
         # get dictionary of datasets
@@ -224,10 +221,11 @@ class Main:
         if selected_model == 'Auto-regresión':
             model_ = 'AutoReg'
 
-            param_names = ['lags', 'trend', 'periods_fwd']
+            param_names = self.back_end.config_shelf.send_dict()['params'].keys()
 
-            param_values = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in
-                            ['lags', 'trend', 'periods_fwd']]
+            # param_names = ['lags', 'trend', 'periods_fwd']
+
+            param_values = [self.back_end.config_shelf.send_parameter(param, model=model_) for param in param_names]
 
             for idx, param in enumerate(param_values):
                 try:
@@ -253,7 +251,6 @@ class Main:
             test = test.reset_index()
             test.columns = ['index', 'Demanda']
             self.create_fig(test, x='index', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
-
 
             print(df_tot.head())
             print(test.sample())
@@ -436,7 +433,11 @@ class ConfigModel:
         shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
 
         # get possible values key of active model
-        model_params = shelf_dict[self.model]['possible_values']
+        model_params = shelf_dict[self.model]['params']
+
+        # table headers
+        lbl_name_header = Label(self.main_frame, text='Parámetro').grid(row=0, column=0, padx=10, pady=10)
+        lbl_value_header = Label(self.main_frame, text='Valor').grid(row=0, column=1, padx=10, pady=10)
 
         # loop over all the items in the possible values dictionary
         for idx, item in enumerate(model_params.items()):
@@ -445,48 +446,50 @@ class ConfigModel:
             # the first item of the tuple is the parameter name
             # the second item of the tuple is the parameter value
 
+            param_name = item[0]
+            curr_value = item[1][0]
+            possible_values = item[1][1]
+
             # set parameter name to label
             lbl = Label(self.main_frame,
-                        text=item[0])
-            lbl.grid(row=idx, column=0)
+                        text=param_name)
+            # index + 1 because of the headers
+            lbl.grid(row=idx+1, column=0, padx=10, pady=10)
 
             # according to the type, choose type of widget
             # if the itemtype is a list, the widget must be a combobox with said list as possible values
-            if type(item[1]) == list:
+            if type(possible_values) == tuple:
                 # shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
-
-                # get the current parameter value from the params key of the dictionary
-                val = shelf_dict[self.model]['params'][item[0]]
 
                 try:
                     # try to convert to int
-                    val = int(val)
+                    val = int(curr_value)
                 except ValueError:
                     pass
 
                 # declare combobox with the values as the possible parameter values
-                widget = ttk.Combobox(self.main_frame, value=item[1])
-                widget.current(item[1].index(val))
-                widget.grid(row=idx, column=1, padx=10)
+                widget = ttk.Combobox(self.main_frame, value=possible_values)
+                widget.current(possible_values.index(curr_value))
+                widget.grid(row=idx + 1, column=1, padx=10)
 
                 # set widget type to key of dict selected, to save parameters to the right key
-                self.dict_selected[item[0]] = widget
+                self.dict_selected[param_name] = widget
 
             # if the item type is type, the widget must be an entry to allow for user input
-            if type(item[1]) == type:
-                # shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
+            if type(possible_values) == type:
 
                 # get the current parameter value from the params key of the dictionary
-                entry_val = shelf_dict[self.model]['params'][item[0]]
                 widget = Entry(self.main_frame, width=30)
-                widget.insert(END, entry_val)
+                widget.insert(END, curr_value)
                 widget.grid(row=idx, column=1, padx=10)
 
                 # set widget type to key of dict selected, to save parameters to the right key
-                self.dict_selected[item[0]] = widget
+                self.dict_selected[param_name] = widget
 
     def save_to_shelf(self):
         """Save chosen parameters to the config shelf."""
+
+        # todo: corregir esto
 
         # loop over the saved parameters
         for key, widget in self.dict_selected.items():
