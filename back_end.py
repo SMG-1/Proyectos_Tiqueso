@@ -43,6 +43,8 @@ class AutoRegression(AutoReg):
         # predict on original index to obtain fitted values
         fitted_vals = self.fitted_model.predict()
 
+        self.fitted_model.get_prediction()
+
         # convert fitted values to Dataframe using lag as first item on index
         # ex: if lags = 1, index starts on 1
         fitted_vals = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(fitted_vals) + self.ar_lags[0], 1)],
@@ -359,7 +361,7 @@ class ConfigShelf:
         if 'model' in kwargs.keys():
             model_ = kwargs['model']
 
-            value = shelf[model_]['params'][parameter]
+            value = shelf[model_]['params'][parameter][0]
 
         else:
             value = shelf[parameter]
@@ -402,6 +404,9 @@ class Application:
 
         # available forecasting models
         self.models = ['Auto-regresión', 'ARIMA']
+
+        # active model used for forecasting
+        self.active_model = None
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -517,6 +522,9 @@ class Application:
 
         # for all the unique var_name values, get the filtered dataframe and add to list
         for unique in unique_combinations:
+            df_ = df[df[var_name] == unique]
+            idx = pd.date_range(df.index.to_timestamp().date.min(), df.index.to_timestamp().date.max())
+            df_2 = df_.reindex(idx, fill_value=0)
             df_list.append(df[df[var_name] == unique])
 
         # create total demand df grouped by date
@@ -532,6 +540,54 @@ class Application:
 
         # assign the dictionary to class attribute
         self.separate_data_sets = data_sets_dict
+
+    def fit_to_data(self, df: pd.DataFrame, model_in_name: str):
+        """Fit any of the supported models to the data and save the model used."""
+
+        if model_in_name == 'Auto-regresión':
+            model_name = 'AutoReg'
+
+        # get parameter names
+        param_names = self.config_shelf.send_dict()[model_name]['params'].keys()
+
+        # get parameter values
+        param_values = [self.config_shelf.send_parameter(param, model=model_name) for param in param_names]
+
+        # try to convert parameter values to int, some are saved in str format by the combobox
+        for idx, param in enumerate(param_values):
+            try:
+                param_values[idx] = int(param)
+            except ValueError:
+                pass
+            except TypeError:
+                pass
+
+        # create temp parameter dictionary with names and values to be used
+        param_dict = dict(zip(param_names, param_values))
+
+        # get only column of values of the dataframe
+        df = df.iloc[:, -1]
+
+        if model_in_name == 'Auto-regresión':
+            # df = df.set_index('Fecha')
+
+            # create model with df and set in
+            self.active_model = AutoRegression(df,
+                                               lags=param_dict['lags'],
+                                               trend=param_dict['trend'],
+                                               periods_fwd=param_dict['periods_fwd'])
+
+            df_fitted = self.active_model.fit_predict()
+            df_fitted = df_fitted.reset_index()
+
+            return df_fitted
+
+    def predict_future(self):
+        """Use the fitted model to predict forward."""
+
+        df_pred = self.active_model.predict_fwd()
+
+        return df_pred
 
     def evaluate_fit(self, data, fitted_values):
         """"""
@@ -577,20 +633,6 @@ class Application:
 
             print(f'Best score {score_best}. Lags: {lags_best}, trend: {trends_best}.')
 
-    def workflow(self):
-        df = self.read_data()
-        df = self.clean_data(df)
-        dfs = self.create_new_datasets(df)
-
-        params = {'lags': range(1, 15, 1),
-                  'trend': ['c', 'ct', 't']}
-
-        for key, df in dfs.items():
-            print(f'Getting best parameters for {key}')
-            self.get_best_model(df.iloc[:, -1], 'autoreg', params)
-
-        return dfs
-
 
 if __name__ == '__main__':
     root_path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
@@ -598,5 +640,3 @@ if __name__ == '__main__':
     app = Application(root_path)
     # app.set_path('Demand', r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.xlsx")
     app.set_path('Demand', r"C:\Users\smirand27701\Desktop\Nueva carpeta\Ventas sample.csv")
-
-    test = app.workflow()
