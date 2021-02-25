@@ -436,8 +436,8 @@ class ConfigModel:
         model_params = shelf_dict[self.model]['params']
 
         # table headers
-        lbl_name_header = Label(self.main_frame, text='Parámetro').grid(row=0, column=0, padx=10, pady=10)
-        lbl_value_header = Label(self.main_frame, text='Valor').grid(row=0, column=1, padx=10, pady=10)
+        Label(self.main_frame, text='Parámetro').grid(row=0, column=0, padx=10, pady=10)
+        Label(self.main_frame, text='Valor').grid(row=0, column=1, padx=10, pady=10)
 
         # loop over all the items in the possible values dictionary
         for idx, item in enumerate(model_params.items()):
@@ -463,7 +463,7 @@ class ConfigModel:
 
                 try:
                     # try to convert to int
-                    val = int(curr_value)
+                    curr_value = int(curr_value)
                 except ValueError:
                     pass
 
@@ -481,7 +481,7 @@ class ConfigModel:
                 # get the current parameter value from the params key of the dictionary
                 widget = Entry(self.main_frame, width=30)
                 widget.insert(END, curr_value)
-                widget.grid(row=idx, column=1, padx=10)
+                widget.grid(row=idx+1, column=1, padx=10)
 
                 # set widget type to key of dict selected, to save parameters to the right key
                 self.dict_selected[param_name] = widget
