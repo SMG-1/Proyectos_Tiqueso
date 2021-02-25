@@ -318,14 +318,12 @@ class ConfigShelf:
         """Set value (value) to key (parameter)."""
 
         # open saved values
-        # shelf = self.open_shelf(True)
-
-        shelf = shelve.open(self._path, writeback=True)
+        shelf = self.open_shelf(True)
 
         if 'model' in kwargs.keys():
             model_ = kwargs['model']
 
-            shelf[model_]['params'][parameter] = value
+            shelf[model_]['params'][parameter][0] = value
 
         else:
             # set value to key
