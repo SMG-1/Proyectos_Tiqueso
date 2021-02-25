@@ -285,12 +285,15 @@ class ConfigShelf:
         config_shelf = shelve.open(self._path)
 
         # set keys list
-        self.model_dict = {'AutoReg': {'params': {'lags': 1,
-                                                  'trend': 'ct',
-                                                  'periods_fwd': 50},
-                                       'possible_values': {'lags': list(range(1, 50, 1)),
-                                                           'trend': ['n', 'ct', 'c', 't'],
-                                                           'periods_fwd': int}}}
+        self.model_dict = {'AutoReg': {'params': {'lags': [1, tuple(range(1, 50, 1))],
+                                                  'trend': ['ct', ('n', 'ct', 'c', 't')],
+                                                  'periods_fwd': [50, int]}},
+
+                           'ARIMA': {'params': {'p': [1, tuple(range(1, 10, 1))],
+                                                'i': [1, tuple(range(1, 10, 1))],
+                                                'q': [1, tuple(range(1, 10, 1))],
+                                                'trend': ['ct', ('n', 'ct', 'c', 't')],
+                                                'periods_fwd': [50, int]}}}
 
         # try to get value from key, if empty initialize
         for key, value in self.model_dict.items():
@@ -400,7 +403,7 @@ class Application:
         self.separate_data_sets = {}
 
         # available forecasting models
-        self.models = ['Auto-regresión']
+        self.models = ['Auto-regresión', 'ARIMA']
 
     def setup(self):
         if not os.path.exists(self.path_):
