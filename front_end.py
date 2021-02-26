@@ -157,6 +157,29 @@ class Main:
                                    command=self.run_forecast)
         self.btn_run_fcst.grid(row=2, column=0, columnspan=2, pady=10)
 
+        # LabelFrame para contener opciones de visualización
+        self.frame_viz = LabelFrame(self.frame_config,
+                                        text='Visualización',
+                                        width=self.screen_width / 6,
+                                        height=self.screen_height / 3,
+                                        bg=bg_color)
+        self.frame_viz.grid(row=3, column=0, columnspan=1, padx=10, pady=10)
+
+        # Label: Model
+        self.lbl_choose_viz_title = Label(self.frame_viz,
+                                            text='Modelo',
+                                            padx=10,
+                                            pady=10,
+                                            bg=bg_color).grid(row=0, column=0)
+
+        # Combobox: available models
+        viz_list = ['Entrenamiento', 'Predicción']
+        self.combobox_choose_viz = ttk.Combobox(self.frame_viz,
+                                                  value=viz_list)
+        # self.combobox_choose_viz.bind("<<ComboboxSelected>>", self.combo_box_callback)
+        self.combobox_choose_viz.current(0)
+        self.combobox_choose_viz.grid(row=0, column=1, padx=10)
+
         center_window(self.master, self.screen_width, self.screen_height)
 
     def create_fig(self, df, x, y, type, **kwargs):
@@ -198,7 +221,7 @@ class Main:
         self.create_fig(df, x, y, 'Demand')
 
     def update_sku_combobox(self):
-        """set a new combobox on the choose_sku combobox that assings the sku name to its options, and assign the
+        """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
          combobox to the same location in the grid"""
 
         self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
@@ -207,6 +230,8 @@ class Main:
         self.combobox_choose_sku.bind("<<ComboboxSelected>>",
                                       self.show_raw_data_plot)
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+
+
 
     def run_forecast(self):
         # get dictionary of datasets
@@ -229,25 +254,15 @@ class Main:
         fict_combobox_type = ['Gráfico', 'Tabla']
         fict_combobox_result = ['Entrenamiento', 'Predicción']
 
+        self.combobox_choose_viz.get()
 
-        viz_type = fict_combobox_type[0]
-        result_ = fict_combobox_result[0]
-
-        if viz_type == 'Gráfico' and result_ == 'Entrenamiento':
+        if self.combobox_choose_viz.get() == 'Entrenamiento':
 
             self.create_fig(df_fitted, x='Fecha', y='Demanda', type='Fitted', y2='Pronóstico')
 
-        elif viz_type == 'Gráfico' and result_ == 'Predicción':
-
-            # test.columns = ['index', 'Demanda']
-            self.create_fig(df_pred, x='index', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
-
-        elif viz_type == 'Tabla' and result_ == 'Entrenamiento':
-
-            print(df_fitted.head())
-
         else:
-            print(df_pred.head())
+
+            self.create_fig(df_pred, x='Fecha', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
 
 
     def open_window_select_work_path(self):
