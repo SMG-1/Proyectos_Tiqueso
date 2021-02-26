@@ -3,6 +3,7 @@
 import copy
 
 from statsmodels.tsa.ar_model import AutoReg
+from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tools.eval_measures import rmse
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -11,6 +12,7 @@ import os
 import shelve
 from itertools import product
 import datetime
+
 
 pd.options.mode.chained_assignment = None
 
@@ -83,14 +85,19 @@ class AutoRegression(AutoReg):
         # set an index from original X shape, to periods_fwd for new predictions
         # self.predictions = pd.DataFrame(index=[i for i in range(self.df.shape[0], self.df.shape[0] + self.periods_fwd)])
 
-        date_range = pd.date_range(self.df.index.max(), periods=self.periods_fwd)
+        # date_range = pd.date_range(self.df.index.max(), periods=self.periods_fwd)
+        pred_end_date = pd.date_range(self.df.index.max(), periods=self.periods_fwd).max()
 
         # todo; CORREGIR
 
-        self.predictions = self.fitted_model.predict(date_range)
+        # self.predictions = self.fitted_model.predict(date_range)
+        self.predictions = self.fitted_model.predict(end=pred_end_date, dynamic=True)
+        self.predictions = self.predictions.iloc[-self.periods_fwd+1:]
+        col_name = self.df.columns[0]
+        self.predictions = pd.DataFrame(self.predictions, columns=[col_name])
 
         # use the native predict method to populate the index
-        self.predictions.loc[:, 0] = self.fitted_model.predict(self.predictions.index[0], self.predictions.index[-1])
+        # self.predictions.loc[:, 0] = self.fitted_model.predict(self.predictions.index[0], self.predictions.index[-1])
 
         # create dataframe with original data and predictions
         self.df_real_preds = pd.concat([self.df, self.predictions], axis=0)
@@ -103,6 +110,15 @@ class AutoRegression(AutoReg):
         ax.plot(self.df_real_preds.loc[self.df_real_preds.index >= self.df.shape[0]], label=self.var_names[1])
         leg = ax.legend()
         plt.show()
+
+
+class SARIMAX_2(SARIMAX):
+    def __init__(self, endog, **kwargs):
+        super().__init__(endog, **kwargs)
+
+
+
+
 
 
 class AutoRegression2:
@@ -300,7 +316,7 @@ class ConfigShelf:
                                                   'periods_fwd': [50, int]}},
 
                            'ARIMA': {'params': {'p': [1, tuple(range(1, 10, 1))],
-                                                'i': [1, tuple(range(1, 10, 1))],
+                                                'd': [1, tuple(range(1, 10, 1))],
                                                 'q': [1, tuple(range(1, 10, 1))],
                                                 'trend': ['ct', ('n', 'ct', 'c', 't')],
                                                 'periods_fwd': [50, int]}}}
@@ -499,6 +515,9 @@ class Application:
             raise ValueError('Error: en la ultima columna de los datos de entrada hay filas que no contienen'
                              ' datos numericos.')
 
+        # TEMP: drop canal column
+        df = df.iloc[:, [0, 1, 2, 4]]
+
         # extract date from datetime values
         df['Fecha'] = df['Fecha'].dt.date
 
@@ -507,7 +526,6 @@ class Application:
 
         # set date as index
         df.set_index(['Fecha'], inplace=True)
-        # df.index = pd.DatetimeIndex(df.index).to_period('D')
         df.index = pd.DatetimeIndex(df.index)
 
         # save df as a class attribute
@@ -558,6 +576,9 @@ class Application:
         if model_in_name == 'Auto-regresión':
             model_name = 'AutoReg'
 
+        else:
+            model_name = model_in_name
+
         # get parameter names
         param_names = self.config_shelf.send_dict()[model_name]['params'].keys()
 
@@ -592,6 +613,13 @@ class Application:
             df_fitted = df_fitted.reset_index()
 
             return df_fitted
+
+        if model_name == 'ARIMA':
+
+            self.active_model = SARIMAX(df,
+                                        order=(param_dict['p'],
+                                               param_dict['d'],
+                                               param_dict['q']))
 
     def predict_future(self):
         """Use the fitted model to predict forward."""
