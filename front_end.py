@@ -202,6 +202,8 @@ class Main:
             df.plot(x=x, y=kwargs['y2'], color='r', ax=self.ax)
 
         if type == 'Forecast':
+            df = df.reset_index()
+            df.columns = [x, y]
             df.iloc[:kwargs['idx'] + 1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
             df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
 
