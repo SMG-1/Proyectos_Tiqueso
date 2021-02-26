@@ -10,6 +10,7 @@ import numpy as np
 import os
 import shelve
 from itertools import product
+import datetime
 
 pd.options.mode.chained_assignment = None
 
@@ -47,14 +48,15 @@ class AutoRegression(AutoReg):
 
         # convert fitted values to Dataframe using lag as first item on index
         # ex: if lags = 1, index starts on 1
-        fitted_vals = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(fitted_vals) + self.ar_lags[0], 1)],
-                                   data=fitted_vals)
+        # fitted_vals = pd.DataFrame(index=[i for i in range(self.ar_lags[0], len(fitted_vals) + self.ar_lags[0], 1)],
+        #                            data=fitted_vals)
 
         # add the fitted values to the original data as a new column
         df_tot = pd.concat([self.df, fitted_vals], axis=1)
 
         # change column names
         df_tot.columns = self.var_names
+        df_tot.dropna(subset=[self.var_names[-1]], inplace=True)
 
         # assign to instance attribute
         self.df_real_vs_fitted = df_tot
@@ -79,7 +81,13 @@ class AutoRegression(AutoReg):
         """Predict N periods forward using self.periods_fwd as N."""
 
         # set an index from original X shape, to periods_fwd for new predictions
-        self.predictions = pd.DataFrame(index=[i for i in range(self.df.shape[0], self.df.shape[0] + self.periods_fwd)])
+        # self.predictions = pd.DataFrame(index=[i for i in range(self.df.shape[0], self.df.shape[0] + self.periods_fwd)])
+
+        date_range = pd.date_range(self.df.index.max(), periods=self.periods_fwd)
+
+        # todo; CORREGIR
+
+        self.predictions = self.fitted_model.predict(date_range)
 
         # use the native predict method to populate the index
         self.predictions.loc[:, 0] = self.fitted_model.predict(self.predictions.index[0], self.predictions.index[-1])
@@ -499,7 +507,8 @@ class Application:
 
         # set date as index
         df.set_index(['Fecha'], inplace=True)
-        df.index = pd.DatetimeIndex(df.index).to_period('D')
+        # df.index = pd.DatetimeIndex(df.index).to_period('D')
+        df.index = pd.DatetimeIndex(df.index)
 
         # save df as a class attribute
         self.data_ = df
@@ -523,9 +532,11 @@ class Application:
         # for all the unique var_name values, get the filtered dataframe and add to list
         for unique in unique_combinations:
             df_ = df[df[var_name] == unique]
-            idx = pd.date_range(df.index.to_timestamp().date.min(), df.index.to_timestamp().date.max())
-            df_2 = df_.reindex(idx, fill_value=0)
-            df_list.append(df[df[var_name] == unique])
+            df_ = df_.asfreq('D')
+            df_['Demanda'].fillna(0, inplace=True)
+            df_.fillna(method='ffill', inplace=True)
+            # df_list.append(df[df[var_name] == unique])
+            df_list.append(df_)
 
         # create total demand df grouped by date
         grouped_df = df.reset_index()
