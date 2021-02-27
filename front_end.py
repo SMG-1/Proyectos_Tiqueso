@@ -247,14 +247,10 @@ class Main:
 
         df_fitted = self.back_end.fit_to_data(df, selected_model)
 
-        df_pred = self.back_end.predict_future()
-
+        df_pred = self.back_end.predict_forward()
 
         # todo: hacer combobox para escoger vista, entrenamiento del modelo (vista y data)
         # prediccion futura del modelo (vista y data) y seleccionar figura dependiendo del combobox
-
-        fict_combobox_type = ['Gráfico', 'Tabla']
-        fict_combobox_result = ['Entrenamiento', 'Predicción']
 
         self.combobox_choose_viz.get()
 
