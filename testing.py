@@ -1,27 +1,21 @@
-dicte = {'a': 3,
-         'b': 2,
-         'c': 1}
-
-for num, item in enumerate(dicte.items()):
-    print('num:, ', num, 'key', item[0], 'value', item[1])
-
-test = [range(0, 10)]
-
-print(type(test[0]))
-
+from sklearn.model_selection import TimeSeriesSplit
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
 
-data = pd.DataFrame(np.random.randint(10, size=(100,)))
-data['Test'] = np.random.randint(10, size=(100,))
-data['Test2'] = np.random.randint(10, size=(100,))
-data['Test3'] = np.random.randint(10, size=(100,))
-data = data.reset_index()
+df = pd.read_csv(r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.csv")
+df = df.groupby('Fecha')['Cantidad KG'].sum().reset_index()
+df = df.sort_values('Fecha')
 
-# create plot with index as X value, and demand as y value
-ax = data.plot(x='index', y='Test', legend=False)
-ax2 = ax.twinx()
-data.plot(x='index', y='Test2', ax=ax, legend=False, color="r")
-ax.figure.legend()
-plt.show()
+kf = TimeSeriesSplit(n_splits=3)
+
+# Iterate through each split
+fold = 0
+for train_index, test_index in kf.split(df):
+    cv_train, cv_test = df.iloc[train_index], df.iloc[test_index]
+
+    print('Fold :', fold)
+    print('Train date range: from {} to {}'.format(cv_train.Fecha.min(), cv_train.Fecha.max()))
+    print('Test date range: from {} to {}\n'.format(cv_test.Fecha.min(), cv_test.Fecha.max()))
+    fold += 1
+
+
+from sklearn.model_selection import RandomizedSearchCV
