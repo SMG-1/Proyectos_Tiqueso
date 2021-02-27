@@ -1,10 +1,10 @@
 import os
+import queue
 import threading
 from tkinter import *
 from tkinter import ttk
 from tkinter import filedialog
 from back_end import Application
-from back_end import AutoRegression
 from back_end import ConfigShelf
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
@@ -42,6 +42,7 @@ class Main:
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
         self.height = self.screen_height
+        # self.queue = None
 
         # application instance
         self.back_end = Application(root_path)
@@ -113,6 +114,10 @@ class Main:
 
         # --- NIVEL 3 ---
 
+        # listbox to show status
+        self.listbox = Listbox(self.frame_status, width=150, height=25)
+        self.listbox.pack()
+
         # LabelFrame para contener modelos y ajustes de parametros
         self.frame_modeler = LabelFrame(self.frame_config,
                                         text='Modelo',
@@ -131,7 +136,7 @@ class Main:
 
         # Combobox: available models
         self.combobox_choose_model = ttk.Combobox(self.frame_modeler,
-                                                  value=self.back_end.models)
+                                                  value=list(self.back_end.models.values()))
         # self.combobox_choose_model.bind("<<ComboboxSelected>>", self.combo_box_callback)
         self.combobox_choose_model.current(0)
         self.combobox_choose_model.grid(row=0, column=1, padx=10)
@@ -159,26 +164,41 @@ class Main:
 
         # LabelFrame para contener opciones de visualización
         self.frame_viz = LabelFrame(self.frame_config,
-                                        text='Visualización',
-                                        width=self.screen_width / 6,
-                                        height=self.screen_height / 3,
-                                        bg=bg_color)
+                                    text='Visualización',
+                                    width=self.screen_width / 6,
+                                    height=self.screen_height / 3,
+                                    bg=bg_color)
         self.frame_viz.grid(row=3, column=0, columnspan=1, padx=10, pady=10)
 
         # Label: Model
         self.lbl_choose_viz_title = Label(self.frame_viz,
-                                            text='Modelo',
-                                            padx=10,
-                                            pady=10,
-                                            bg=bg_color).grid(row=0, column=0)
+                                          text='Modelo',
+                                          padx=10,
+                                          pady=10,
+                                          bg=bg_color).grid(row=0, column=0)
 
         # Combobox: available models
         viz_list = ['Entrenamiento', 'Predicción']
         self.combobox_choose_viz = ttk.Combobox(self.frame_viz,
-                                                  value=viz_list)
+                                                value=viz_list)
         # self.combobox_choose_viz.bind("<<ComboboxSelected>>", self.combo_box_callback)
         self.combobox_choose_viz.current(0)
         self.combobox_choose_viz.grid(row=0, column=1, padx=10)
+
+        # LabelFrame para modelado automatico
+        self.frame_auto = LabelFrame(self.frame_config,
+                                     text='Modelado Automático',
+                                     width=self.screen_width / 6,
+                                     height=self.screen_height / 3,
+                                     bg=bg_color)
+        self.frame_auto.grid(row=4, column=0, columnspan=1, padx=10, pady=10)
+
+        # Button to run automated forecast
+        self.btn_run_optimizer = Button(self.frame_auto,
+                                        text='Ejecutar optimizador',
+                                        padx=10,
+                                        command=self.run_optimizer)
+        self.btn_run_optimizer.grid(row=1, column=0, columnspan=2, pady=10)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
@@ -198,6 +218,7 @@ class Main:
 
         if type == 'Fitted':
             # create plot with index as X value, and demand as y value
+            df = df.reset_index()
             df.plot(x=x, y=y, color='b', ax=self.ax)
             df.plot(x=x, y=kwargs['y2'], color='r', ax=self.ax)
 
@@ -233,8 +254,6 @@ class Main:
                                       self.show_raw_data_plot)
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
-
-
     def run_forecast(self):
         # get dictionary of datasets
         sep_df_list = self.back_end.separate_data_sets
@@ -247,10 +266,12 @@ class Main:
 
         df_fitted = self.back_end.fit_to_data(df, selected_model)
 
-        df_pred = self.back_end.predict_forward()
+        df_pred = self.back_end.predict_fwd()
 
-        # todo: hacer combobox para escoger vista, entrenamiento del modelo (vista y data)
-        # prediccion futura del modelo (vista y data) y seleccionar figura dependiendo del combobox
+
+
+        # print eval
+        self.back_end.evaluate_fit()
 
         self.combobox_choose_viz.get()
 
@@ -260,14 +281,17 @@ class Main:
 
         else:
 
-            self.create_fig(df_pred, x='Fecha', y='Demanda', type='Forecast', idx=df.shape[0], y2='Forecast')
+            self.create_fig(df_pred, x='Fecha', y='Demanda', type='Forecast', idx=df.shape[0], y2='Pronóstico')
 
+    def run_optimizer(self):
+
+        self.spawn_thread('Optimizador')
 
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
 
         # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
-        # this new window is closed
+        # this window is closed
         self.new_win = Toplevel(self.master)
         WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
         self.new_win.grab_set()
@@ -286,6 +310,48 @@ class Main:
         ConfigModel(self.new_win, self.back_end, self.screen_width, self.screen_height, chosen_model)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
+    def spawn_thread(self, process):
+        """Create ThreadedClient class and pass it to a periodic call function."""
+
+        if process == 'Optimizador':
+
+
+            self.btn_run_optimizer.config(state='disabled')
+            queue_ = queue.Queue()
+
+            thread = ThreadedClient(queue_, self.back_end, process)
+            thread.start()
+
+            self.periodic_call(process, thread, queue_)
+
+    def periodic_call(self, process, thread, queue_):
+
+        self.check_queue(queue_)
+
+        if thread.is_alive():
+            print('what')
+            self.master.after(100, lambda: self.periodic_call(process, thread, queue_))
+
+        else:
+            if process == 'Optimizador':
+                self.btn_run_optimizer.config(state='active')
+
+    def check_queue(self, queue_):
+
+        while queue_.qsize():
+
+            try:
+
+                msg = queue_.get(False)
+
+                if msg[0] == 'Listo':
+                    print(msg[0])
+                    self.listbox.insert(END, msg[1])
+
+            except queue_.empty():
+                pass
+
 
 
 class WindowSelectWorkPath:
@@ -462,7 +528,7 @@ class ConfigModel:
             lbl = Label(self.main_frame,
                         text=param_name)
             # index + 1 because of the headers
-            lbl.grid(row=idx+1, column=0, padx=10, pady=10)
+            lbl.grid(row=idx + 1, column=0, padx=10, pady=10)
 
             # according to the type, choose type of widget
             # if the itemtype is a list, the widget must be a combobox with said list as possible values
@@ -485,11 +551,10 @@ class ConfigModel:
 
             # if the item type is type, the widget must be an entry to allow for user input
             if type(possible_values) == type:
-
                 # get the current parameter value from the params key of the dictionary
                 widget = Entry(self.main_frame, width=30)
                 widget.insert(END, curr_value)
-                widget.grid(row=idx+1, column=1, padx=10)
+                widget.grid(row=idx + 1, column=1, padx=10)
 
                 # set widget type to key of dict selected, to save parameters to the right key
                 self.dict_selected[param_name] = widget
@@ -523,8 +588,8 @@ class ThreadedClient(threading.Thread):
         self.process = process
 
     def run(self):
-        """if self.process == 'Workflow_Load_Files':
-            self.application.read_files_politicas(self.queue)"""
+        if self.process == 'Optimizador':
+            self.application.get_best_model(self.queue)
 
 
 if __name__ == '__main__':
