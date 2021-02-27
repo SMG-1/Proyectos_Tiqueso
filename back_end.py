@@ -12,6 +12,8 @@ import os
 import shelve
 from itertools import product
 import datetime
+from sklearn.model_selection import TimeSeriesSplit
+import pmdarima as pm
 
 pd.options.mode.chained_assignment = None
 
@@ -22,126 +24,6 @@ def generate_testing_data():
     # generar data de prueba
     data = pd.DataFrame(np.random.randint(10, size=(100,)))
     return data
-
-
-class AutoRegression(AutoReg):
-    def __init__(self, endog, lags, trend, periods_fwd):
-        super().__init__(endog, lags, trend=trend, old_names=False)
-
-        # save dataframe as attribute
-        self.df = pd.DataFrame(endog)
-
-        # attribute to define steps forward when forecasting
-        self.periods_fwd = periods_fwd
-
-        # feature names for the dataframe
-        self.var_names = ['Demanda', 'Pronóstico']
-
-        self.fitted_model = None
-        self.df_real_vs_fitted = None
-        self.predictions = None
-
-    def fit_predict(self):
-        """Fit the model and predict on the original index to get the fitted values."""
-
-        # get model fitted to the input data
-        self.fitted_model = self.fit()
-
-        # predict on original index to obtain fitted values
-        fitted_vals = self.fitted_model.predict()
-
-        # add the fitted values to the original data as a new column
-        df_tot = pd.concat([self.df, fitted_vals], axis=1)
-
-        # change column names
-        df_tot.columns = self.var_names
-        df_tot.dropna(subset=[self.var_names[-1]], inplace=True)
-
-        # assign to instance attribute
-        self.df_real_vs_fitted = df_tot
-
-        return df_tot
-
-    def predict_fwd(self):
-        """Predict N periods forward using self.periods_fwd as N."""
-
-        pred_start_date = pd.date_range(self.df.index.max(), periods=self.periods_fwd).min() + datetime.timedelta(
-            days=1)
-        pred_end_date = pd.date_range(self.df.index.max(), periods=self.periods_fwd).max()
-
-        self.predictions = self.fitted_model.predict(start=pred_start_date,
-                                                     end=pred_end_date,
-                                                     dynamic=True)
-
-        # self.predictions = self.predictions.iloc[-self.periods_fwd + 1:]
-        col_name = self.df.columns[0]
-        self.predictions = pd.DataFrame(self.predictions, columns=[col_name])
-
-        # create dataframe with original data and predictions
-        self.df_real_preds = pd.concat([self.df, self.predictions], axis=0)
-
-        return self.df_real_preds
-
-
-class SARIMAX_2(SARIMAX):
-    def __init__(self, endog, periods_fwd, **kwargs):
-        super().__init__(endog, **kwargs)
-
-        # save dataframe as attribute
-        self.df = pd.DataFrame(endog)
-
-        # attribute to define steps forward when forecasting
-        self.periods_fwd = periods_fwd
-
-        # feature names for the dataframe
-        self.var_names = ['Demanda', 'Pronóstico']
-
-        self.fitted_model = None
-        self.df_real_vs_fitted = None
-        self.predictions = None
-
-    def fit_predict(self):
-        """Fit the model and predict on the original index to get the fitted values."""
-
-        # get model fitted to the input data
-        self.fitted_model = self.fit()
-
-        # predict on original index to obtain fitted values
-        fitted_vals = self.fitted_model.predict()
-
-        # add the fitted values to the original data as a new column
-        df_tot = pd.concat([self.df, fitted_vals], axis=1)
-
-        # change column names
-        df_tot.columns = self.var_names
-        df_tot.dropna(subset=[self.var_names[-1]], inplace=True)
-
-        # assign to instance attribute
-        self.df_real_vs_fitted = df_tot
-
-        return df_tot
-
-    def predict_fwd(self):
-        """Predict N periods forward using self.periods_fwd as N."""
-
-        # get the last date according to the periods_fwd parameter
-        pred_start_date = pd.date_range(self.df.index.max(), periods=self.periods_fwd).min()
-        pred_end_date = pd.date_range(self.df.index.max(), periods=self.periods_fwd).max()
-
-        # predict new values, from pred_start_date to pred_end_date (these are datetime values)
-        self.predictions = self.fitted_model.predict(start=pred_start_date,
-                                                     end=pred_end_date,
-                                                     dynamic=True)
-
-        # create dataframe from predictions and assign the first feature name of df as the feature name
-        # to be able to concat the dataframes
-        col_name = self.df.columns[0]
-        self.predictions = pd.DataFrame(self.predictions, columns=[col_name])
-
-        # create dataframe with original data and predictions
-        self.df_real_preds = pd.concat([self.df, self.predictions], axis=0)
-
-        return self.df_real_preds
 
 
 class FilePathShelf:
@@ -346,14 +228,38 @@ class Application:
         self.config_shelf = ConfigShelf(self.path_config_shelf)
 
         # master data variable
-        self.data_ = pd.DataFrame()
+        self.raw_data = pd.DataFrame()
         self.separate_data_sets = {}
 
         # available forecasting models
-        self.models = ['Auto-regresión', 'ARIMA']
+        self.models = {'AutoReg': 'Auto-regresión',
+                       'SARIMAX': 'ARIMA'}
 
-        # active model used for forecasting
+        # MODEL ATTRIBUTES
+
+        # model chosen by the user
         self.active_model = None
+
+        # model fitted to the data
+        self.fitted_model = None
+
+        # data used for modelling
+        self.model_df = None
+
+        # amount of periods to forecast out of sample
+        self.periods_fwd = None
+
+        # feature names for the modelling data
+        self.var_names = ['Demanda', 'Pronóstico']
+
+        # dataframe to compare real data vs fitted data
+        self.df_real_vs_fitted = None
+
+        # OOS predictions made by the model
+        self.predictions = None
+
+        # real data + OOS predictions
+        self.df_real_preds = None
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -439,7 +345,7 @@ class Application:
                              ' datos numericos.')
 
         # TEMP: drop canal column
-        df = df.iloc[:, [0, 1, 2, 4]]
+        # df = df.iloc[:, [0, 1, 2, 4]]
 
         # extract date from datetime values
         df['Fecha'] = df['Fecha'].dt.date
@@ -452,7 +358,7 @@ class Application:
         df.index = pd.DatetimeIndex(df.index)
 
         # save df as a class attribute
-        self.data_ = df
+        self.raw_data = df
 
     def create_new_data_sets(self):
         """Separate the original data into n datasets, where n is the number of unique data combinations in the df."""
@@ -464,7 +370,7 @@ class Application:
         var_name = 'Nombre'
 
         # create copy to be able to modify the dataset
-        df = copy.deepcopy(self.data_)
+        df = copy.deepcopy(self.raw_data)
 
         # todo: ahorita agarra solo el codigo, ajustar para codigo-canal
         unique_combinations = [uni for uni in df.loc[:, var_name].unique()]
@@ -496,6 +402,7 @@ class Application:
     def fit_to_data(self, df: pd.DataFrame, model_in_name: str):
         """Fit any of the supported models to the data and save the model used."""
 
+        # use model name to get values from the config dictionary
         if model_in_name == 'Auto-regresión':
             model_name = 'AutoReg'
 
@@ -523,85 +430,100 @@ class Application:
         # get only column of values of the dataframe
         df = df.iloc[:, -1]
 
+        # save the df parameter as a class attribute to be used for predictions
+        self.model_df = pd.DataFrame(df)
+
+        # create the model with the selected parameters
         if model_in_name == 'Auto-regresión':
             # create model AutoRegression model with DataFrame parameter and assign parameters according to dictionary
-            self.active_model = AutoRegression(df,
-                                               lags=param_dict['lags'],
-                                               trend=param_dict['trend'],
-                                               periods_fwd=param_dict['periods_fwd'])
-
-            # fit the data to the model and make predictions on the data
-            # reset index to get the date as a feature
-            df_fitted = self.active_model.fit_predict()
-            df_fitted = df_fitted.reset_index()
-
-            return df_fitted
+            self.active_model = AutoReg(df,
+                                        lags=param_dict['lags'],
+                                        trend=param_dict['trend'],
+                                        old_names=False)
 
         if model_name == 'ARIMA':
-            self.active_model = SARIMAX_2(df,
-                                          periods_fwd=param_dict['periods_fwd'],
-                                          order=(param_dict['p'],
-                                                 param_dict['d'],
-                                                 param_dict['q']))
+            self.active_model = SARIMAX(df,
+                                        order=(param_dict['p'],
+                                               param_dict['d'],
+                                               param_dict['q']))
 
-            # fit the data to the model and make predictions on the data
-            # reset index to get the date as a feature
-            df_fitted = self.active_model.fit_predict()
-            df_fitted = df_fitted.reset_index()
+        # set periods forward using the value set in the parameter dictionary
+        self.periods_fwd = param_dict['periods_fwd']
 
-            return df_fitted
+        # get model fitted to the input data
+        self.fitted_model = self.active_model.fit()
 
+        # predict on original index to obtain fitted values
+        fitted_vals = self.fitted_model.predict()
 
-    def predict_forward(self):
-        """Use the fitted model to predict forward."""
+        # add the fitted values to the original data as a new column
+        df_tot = pd.concat([df, fitted_vals], axis=1)
 
-        df_pred = self.active_model.predict_fwd()
+        # change column names
+        df_tot.columns = self.var_names
+        df_tot.dropna(subset=[self.var_names[-1]], inplace=True)
 
-        return df_pred
+        # assign to instance attribute
+        self.df_real_vs_fitted = df_tot
 
-    def evaluate_fit(self, data, fitted_values):
+        return df_tot
+
+    def evaluate_fit(self):
         """"""
 
-        df_real_fitted = pd.concat([data, fitted_values], axis=1)
-        df_real_fitted.columns = ['Demanda', 'Pronóstico']
-        df_real_fitted = df_real_fitted.reset_index()
+        # copy dataframe of real vs fitted values to be able to modify it
+        df_eval = copy.deepcopy(self.df_real_vs_fitted)
 
-        df_eval = df_real_fitted.dropna()
-
+        # calculate error
         df_eval.loc[:, 'Error'] = df_eval['Pronóstico'] - df_eval['Demanda']
 
+        # calculate absolute error
         df_eval.loc[:, 'Abs_Error'] = df_eval['Error'].abs()
 
+        print('AIC: ', self.fitted_model.aic)
+        print('BIC: ', self.fitted_model.bic)
+
+
+        # calculate the mean absolute error
         mae = df_eval['Abs_Error'].mean()
+        print('MAE: ', mae)
 
+        # calculate the mean percentage absolute error
         mae_perc = mae / df_eval['Demanda'].mean()
+        print('MAE %: ', mae_perc)
 
-        return mae
+        return [self.fitted_model.aic, self.fitted_model.bic, mae, mae_perc]
 
-    def get_best_model(self, data, model_name, parameters):
-        lags_best = ""
-        trends_best = ""
-        score_best = 9999
+    def get_best_model(self, queue_):
 
-        if model_name == 'autoreg':
+        results = pm.auto_arima(self.model_df,
+                                out_of_sample_size=20,
+                                stepwise=True)
+        print('Auto-ARIMA Results: ', results.summary())
 
-            for i in product(*parameters.values()):
-                temp_dict = dict(zip(parameters.keys(), i))
+        queue_.put(['Listo', results.summary()])
 
-                model = AutoReg(data, lags=temp_dict['lags'], trend=temp_dict['trend'], old_names=False)
 
-                fitted_model = model.fit()
 
-                fitted_values = fitted_model.predict()
+    def predict_fwd(self):
+        """Predict N periods forward using self.periods_fwd as N."""
 
-                score = self.evaluate_fit(data, fitted_values)
+        pred_start_date = pd.date_range(self.model_df.index.max(),
+                                        periods=self.periods_fwd).min() + datetime.timedelta(days=1)
+        pred_end_date = pd.date_range(self.model_df.index.max(), periods=self.periods_fwd).max()
 
-                if score < score_best:
-                    lags_best = temp_dict['lags']
-                    trends_best = temp_dict['trend']
-                    score_best = score
+        self.predictions = self.fitted_model.predict(start=pred_start_date,
+                                                     end=pred_end_date,
+                                                     dynamic=True)
 
-            print(f'Best score {score_best}. Lags: {lags_best}, trend: {trends_best}.')
+        col_name = self.model_df.columns[0]
+        self.predictions = pd.DataFrame(self.predictions)
+        self.predictions.columns = [col_name]
+
+        # create dataframe with original data and predictions
+        self.df_real_preds = pd.concat([self.model_df, self.predictions], axis=0)
+
+        return self.df_real_preds
 
 
 if __name__ == '__main__':
