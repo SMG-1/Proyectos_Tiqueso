@@ -42,7 +42,7 @@ class Main:
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
         self.height = self.screen_height
-        # self.queue = None
+        self.master.geometry('%dx%d+0+0' % (self.screen_width,self.screen_height))
 
         # application instance
         self.back_end = Application(root_path)
@@ -83,46 +83,42 @@ class Main:
         # --- NIVEL 1 ---
 
         # --- DECLARACION DE FRAMES CONTENEDORES ---
-        # Frame contenedor para visualizacion de graficos y tablas
-        self.frame_display = Frame(self.main_frame,
-                                   bg=bg_color)
-        self.frame_display.pack(fill=BOTH, side=LEFT)
 
-        # --- Frame contenedor para parametros y ajustes
-        self.frame_config = LabelFrame(self.main_frame,
-                                       text='Configuración',
+        # Frame that contains plots to the left and config parameters to the right
+        self.frame_plot_config = Frame(self.main_frame,
                                        bg=bg_color)
-        self.frame_config.pack(fill=BOTH, side=RIGHT)
+        self.frame_plot_config.pack(fill=BOTH, side=BOTTOM)
+
+        # Frame for plots
+        self.frame_plot = Frame(self.frame_plot_config,
+                                width=self.width * (3 / 5),
+                                bg=bg_color)
+        self.frame_plot.pack(fill=BOTH, side=LEFT)
+
+        # Frame for config
+        self.frame_config = Frame(self.frame_plot_config,
+                                  width=self.width * (2 / 5),
+                                  highlightbackground='black',
+                                  highlightthickness=0.5,
+                                  bg=bg_color)
+        self.frame_config.pack(fill=BOTH, side=RIGHT, anchor='se')
 
         # --- NIVEL 2 ---
 
-        # Frame para desplegar graficos
-        self.frame_plot = LabelFrame(self.frame_display,
-                                     text='Gráfico',
-                                     width=self.width * (2 / 5),
-                                     height=self.height / 2,
-                                     bg=bg_color)
-        self.frame_plot.pack(side=TOP, fill=BOTH)
-
-        # Frame para desplegar status e informacion
-        self.frame_status = LabelFrame(self.frame_display,
-                                       text='Estado',
-                                       width=self.width * (2 / 5),
-                                       height=self.height / 3,
-                                       bg=bg_color)
-        self.frame_status.pack(side=BOTTOM, fill=BOTH)
+        # Frame para desplegar tabla de pronostico
+        self.frame_table = Frame(self.main_frame,
+                                 width=self.width,
+                                 height=self.height/1.3,
+                                 bg=bg_color)
+        self.frame_table.pack(side=TOP, fill=BOTH)
 
         # --- NIVEL 3 ---
-
-        # listbox to show status
-        self.listbox = Listbox(self.frame_status, width=150, height=25)
-        self.listbox.pack()
 
         # LabelFrame para contener modelos y ajustes de parametros
         self.frame_modeler = LabelFrame(self.frame_config,
                                         text='Modelo',
-                                        width=self.screen_width / 6,
-                                        height=self.screen_height / 3,
+                                        # width=self.screen_width / 6,
+                                        # height=self.screen_height / 3,
                                         bg=bg_color)
         self.frame_modeler.grid(row=2, column=0, columnspan=1, padx=10, pady=10)
 
@@ -165,8 +161,8 @@ class Main:
         # LabelFrame para contener opciones de visualización
         self.frame_viz = LabelFrame(self.frame_config,
                                     text='Visualización',
-                                    width=self.screen_width / 6,
-                                    height=self.screen_height / 3,
+                                    # width=self.screen_width / 6,
+                                    # height=self.screen_height / 3,
                                     bg=bg_color)
         self.frame_viz.grid(row=3, column=0, columnspan=1, padx=10, pady=10)
 
@@ -188,8 +184,8 @@ class Main:
         # LabelFrame para modelado automatico
         self.frame_auto = LabelFrame(self.frame_config,
                                      text='Modelado Automático',
-                                     width=self.screen_width / 6,
-                                     height=self.screen_height / 3,
+                                     # width=self.screen_width / 6,
+                                     # height=self.screen_height / 3,
                                      bg=bg_color)
         self.frame_auto.grid(row=4, column=0, columnspan=1, padx=10, pady=10)
 
@@ -208,7 +204,8 @@ class Main:
             self.line_plot.get_tk_widget().destroy()
 
         # add matplotlib Figure
-        self.figure = Figure(figsize=((self.width * (2 / 5)) / 96, (self.height / 2) / 96), dpi=96)
+        dpi = 96
+        self.figure = Figure(figsize=((self.width * (3 / 5)) / dpi, (self.height / 5) / dpi), dpi=dpi)
         self.ax = self.figure.add_subplot(1, 1, 1)
         self.line_plot = FigureCanvasTkAgg(self.figure, self.frame_plot)
         self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH)
@@ -230,7 +227,7 @@ class Main:
 
     def show_raw_data_plot(self, event):
         # get dictionary of datasets
-        sep_df_list = self.back_end.separate_data_sets
+        sep_df_list = self.back_end.segmented_data_sets
 
         # filter the dictionary using the current selected combobox value
         df = sep_df_list[self.combobox_choose_sku.get()]
@@ -248,7 +245,7 @@ class Main:
          combobox to the same location in the grid"""
 
         self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
-                                                value=list(self.back_end.separate_data_sets.keys()))
+                                                value=list(self.back_end.segmented_data_sets.keys()))
         self.combobox_choose_sku.current(0)
         self.combobox_choose_sku.bind("<<ComboboxSelected>>",
                                       self.show_raw_data_plot)
@@ -256,7 +253,7 @@ class Main:
 
     def run_forecast(self):
         # get dictionary of datasets
-        sep_df_list = self.back_end.separate_data_sets
+        sep_df_list = self.back_end.segmented_data_sets
 
         # filter the dictionary using the current selected combobox value
         df = sep_df_list[self.combobox_choose_sku.get()]
@@ -268,8 +265,6 @@ class Main:
 
         df_pred = self.back_end.predict_fwd()
 
-
-
         # print eval
         self.back_end.evaluate_fit()
 
@@ -278,6 +273,12 @@ class Main:
         if self.combobox_choose_viz.get() == 'Entrenamiento':
 
             self.create_fig(df_fitted, x='Fecha', y='Demanda', type='Fitted', y2='Pronóstico')
+
+            self.pd_table = pandastable.Table(self.frame_table,
+                                              dataframe=self.back_end.df_total,
+                                              showtoolbar=True,
+                                              showstatusbar=True)
+            self.pd_table.show()
 
         else:
 
@@ -315,8 +316,6 @@ class Main:
         """Create ThreadedClient class and pass it to a periodic call function."""
 
         if process == 'Optimizador':
-
-
             self.btn_run_optimizer.config(state='disabled')
             queue_ = queue.Queue()
 
@@ -351,7 +350,6 @@ class Main:
 
             except queue_.empty():
                 pass
-
 
 
 class WindowSelectWorkPath:
@@ -426,7 +424,7 @@ class WindowSelectWorkPath:
 
     def save_path_to_shelf(self):
         self.app.set_path('Demand', self.lbl_path['text'])
-        self.app.create_new_data_sets()
+        self.app.create_segmented_data()
         self.open_window_pop_up()
 
         self.close_window()
