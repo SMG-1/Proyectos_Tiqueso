@@ -229,11 +229,10 @@ class Application:
 
         # master data variable
         self.raw_data = pd.DataFrame()
-        self.separate_data_sets = {}
+        self.segmented_data_sets = {}
 
         # available forecasting models
-        self.models = {'AutoReg': 'Auto-regresión',
-                       'SARIMAX': 'ARIMA'}
+        self.models = {'SARIMAX': 'ARIMA'}
 
         # MODEL ATTRIBUTES
 
@@ -260,6 +259,9 @@ class Application:
 
         # real data + OOS predictions
         self.df_real_preds = None
+
+        # dataframe with original data, fitted values and OOS predictions
+        self.df_total = pd.DataFrame()
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -344,9 +346,6 @@ class Application:
             raise ValueError('Error: en la ultima columna de los datos de entrada hay filas que no contienen'
                              ' datos numericos.')
 
-        # TEMP: drop canal column
-        # df = df.iloc[:, [0, 1, 2, 4]]
-
         # extract date from datetime values
         df['Fecha'] = df['Fecha'].dt.date
 
@@ -360,7 +359,7 @@ class Application:
         # save df as a class attribute
         self.raw_data = df
 
-    def create_new_data_sets(self):
+    def create_segmented_data(self):
         """Separate the original data into n datasets, where n is the number of unique data combinations in the df."""
 
         # Clean data upon function call
@@ -372,20 +371,20 @@ class Application:
         # create copy to be able to modify the dataset
         df = copy.deepcopy(self.raw_data)
 
-        # todo: ahorita agarra solo el codigo, ajustar para codigo-canal
         unique_combinations = [uni for uni in df.loc[:, var_name].unique()]
         df_list = []
 
         # for all the unique var_name values, get the filtered dataframe and add to list
         for unique in unique_combinations:
             df_ = df[df[var_name] == unique]
+
+            # fill missing dates with 0
             df_ = df_.asfreq('D')
             df_['Demanda'].fillna(0, inplace=True)
             df_.fillna(method='ffill', inplace=True)
-            # df_list.append(df[df[var_name] == unique])
             df_list.append(df_)
 
-        # create total demand df grouped by date
+        # create total demand dataset, grouped by date
         grouped_df = df.reset_index()
         grouped_df = grouped_df.groupby('Fecha').sum().reset_index()
 
@@ -397,7 +396,7 @@ class Application:
         data_sets_dict = dict(zip(unique_combinations, df_list))
 
         # assign the dictionary to class attribute
-        self.separate_data_sets = data_sets_dict
+        self.segmented_data_sets = data_sets_dict
 
     def fit_to_data(self, df: pd.DataFrame, model_in_name: str):
         """Fit any of the supported models to the data and save the model used."""
@@ -432,6 +431,7 @@ class Application:
 
         # save the df parameter as a class attribute to be used for predictions
         self.model_df = pd.DataFrame(df)
+        self.df_total = copy.deepcopy(self.model_df)
 
         # create the model with the selected parameters
         if model_in_name == 'Auto-regresión':
@@ -483,7 +483,6 @@ class Application:
         print('AIC: ', self.fitted_model.aic)
         print('BIC: ', self.fitted_model.bic)
 
-
         # calculate the mean absolute error
         mae = df_eval['Abs_Error'].mean()
         print('MAE: ', mae)
@@ -503,8 +502,6 @@ class Application:
 
         queue_.put(['Listo', results.summary()])
 
-
-
     def predict_fwd(self):
         """Predict N periods forward using self.periods_fwd as N."""
 
@@ -516,12 +513,28 @@ class Application:
                                                      end=pred_end_date,
                                                      dynamic=True)
 
-        col_name = self.model_df.columns[0]
+        col_name = self.var_names[1]
         self.predictions = pd.DataFrame(self.predictions)
         self.predictions.columns = [col_name]
 
         # create dataframe with original data and predictions
         self.df_real_preds = pd.concat([self.model_df, self.predictions], axis=0)
+
+        self.df_forecast = pd.concat([self.df_real_vs_fitted, self.predictions], axis=0)
+        self.df_total = pd.concat([self.df_total, self.df_forecast], axis=1)
+        self.df_total = self.df_total.iloc[:, [0, -1]]
+        self.df_total = self.df_total.round(1)
+        self.df_total.fillna('-', inplace=True)
+        self.df_total = self.df_total.reset_index()
+
+        self.df_total['Fecha'] = self.df_total['Fecha'].dt.strftime('%d-%m-%Y')
+        self.df_total = self.df_total.set_index('Fecha')
+
+        self.df_total = self.df_total.T
+        self.df_total.rename(index={0: self.var_names[0],
+                                    1: self.var_names[1]},
+                             inplace=True)
+
 
         return self.df_real_preds
 
