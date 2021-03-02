@@ -89,8 +89,8 @@ class Main:
                                       orient=HORIZONTAL)
 
         self.tree_view = ttk.Treeview(self.master)
-        for i in range(10):
-            self.tree_view.insert("", "end", text="Item %s" % i)
+        # for i in range(10):
+         #    self.tree_view.insert("", "end", text="Item %s" % i)
         self.tree_view.bind("<Double-1>", self.OnDoubleClick)
 
         self.main_frame = Frame(self.main_paned,
@@ -281,6 +281,9 @@ class Main:
         self.combobox_choose_sku.bind("<<ComboboxSelected>>",
                                       self.show_raw_data_plot)
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+        for i in list(self.back_end.segmented_data_sets.keys()):
+            self.tree_view.insert("", "end", text=i)
+        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
 
     def run_forecast(self):
         # get dictionary of datasets
