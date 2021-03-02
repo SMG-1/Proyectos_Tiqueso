@@ -182,6 +182,9 @@ class Main:
 
         self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
+        # Automatic load on boot
+        self.update_tree_and_plot()
+
         # Button to run forecast
         self.btn_run_fcst = Button(self.frame_modeler,
                                    text='Ejecutar modelo',
@@ -256,12 +259,18 @@ class Main:
             df.iloc[:kwargs['idx'] + 1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
             df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
 
-    def show_raw_data_plot(self, event):
+    def show_raw_data_plot(self, sku, event):
         # get dictionary of datasets
-        sep_df_list = self.back_end.segmented_data_sets
+        sep_df_dict = self.back_end.segmented_data_sets
 
         # filter the dictionary using the current selected combobox value
-        df = sep_df_list[self.combobox_choose_sku.get()]
+
+        # df = sep_df_dict[self.combobox_choose_sku.get()]
+        if sku == 'DEFAULT':
+            temp_sku = list(sep_df_dict.keys())[0]
+            df = sep_df_dict[temp_sku]
+        else:
+            df = sep_df_dict[sku]
         x = 'Fecha'
         y = 'Demanda'
 
@@ -271,19 +280,26 @@ class Main:
 
         self.create_fig(df, x, y, 'Demand')
 
-    def update_sku_combobox(self):
+    def update_tree_and_plot(self):
         """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
          combobox to the same location in the grid"""
 
-        self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
-                                                value=list(self.back_end.segmented_data_sets.keys()))
-        self.combobox_choose_sku.current(0)
-        self.combobox_choose_sku.bind("<<ComboboxSelected>>",
-                                      self.show_raw_data_plot)
-        self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+        # self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
+        #                                         value=list(self.back_end.segmented_data_sets.keys()))
+        # self.combobox_choose_sku.current(0)
+        # self.combobox_choose_sku.bind("<<ComboboxSelected>>",
+        #                               self.show_raw_data_plot)
+        # self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+
+        self.back_end.create_segmented_data()
+
         for i in list(self.back_end.segmented_data_sets.keys()):
             self.tree_view.insert("", "end", text=i)
         self.tree_view.bind("<Double-1>", self.OnDoubleClick)
+
+        self.show_raw_data_plot('DEFAULT', 0)
+
+
 
     def run_forecast(self):
         # get dictionary of datasets
@@ -333,7 +349,7 @@ class Main:
         self.master.wait_window(self.new_win)
 
         # update combobox with new data
-        self.update_sku_combobox()
+        # self.update_tree_and_plot()
 
     def open_window_config_model(self):
         # get selected model
@@ -387,7 +403,8 @@ class Main:
 
     def OnDoubleClick(self, event):
         item = self.tree_view.selection()[0]
-        print("you clicked on", self.tree_view.item(item, "text"))
+        # print("you clicked on", self.tree_view.item(item, "text"))
+        self.show_raw_data_plot(sku=self.tree_view.item(item, "text"), event=event)
 
 
 class WindowSelectWorkPath:
