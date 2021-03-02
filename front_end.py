@@ -42,7 +42,16 @@ class Main:
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
         self.height = self.screen_height
-        self.master.geometry('%dx%d+0+0' % (self.screen_width,self.screen_height))
+
+        self.top_frame_height = self.height / 2
+        self.bottom_frame_height = self.height - self.top_frame_height
+
+        self.tree_width = self.width * (1 / 5)
+        self.plot_width = self.tree_width * 3
+        self.config_width = self.width - self.tree_width - self.plot_width
+        self.table_width = self.screen_width - self.tree_width
+
+        self.master.geometry('%dx%d+0+0' % (self.screen_width, self.screen_height))
 
         # application instance
         self.back_end = Application(root_path)
@@ -74,43 +83,65 @@ class Main:
         self.master.config(menu=main_menu)
 
         # ---NIVEL 0 ---
-        self.main_frame = Frame(self.master,
-                                # width=self.screen_width,
-                                # height=self.screen_height
+        self.main_paned = PanedWindow(self.master,
+                                      width=self.width,
+                                      height=self.height,
+                                      orient=HORIZONTAL)
+
+        self.tree_view = ttk.Treeview(self.master)
+        for i in range(10):
+            self.tree_view.insert("", "end", text="Item %s" % i)
+        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
+
+        self.main_frame = Frame(self.main_paned,
+                                width=self.width * (1 / 2),
+                                height=self.height
                                 )
-        self.main_frame.pack()
+        # self.main_frame.pack()
+
+        self.main_paned.add(self.tree_view)
+        self.main_paned.add(self.main_frame)
+        self.main_paned.pack(fill=BOTH, expand=1)
 
         # --- NIVEL 1 ---
 
         # --- DECLARACION DE FRAMES CONTENEDORES ---
 
         # Frame that contains plots to the left and config parameters to the right
-        self.frame_plot_config = Frame(self.main_frame,
-                                       bg=bg_color)
-        self.frame_plot_config.pack(fill=BOTH, side=BOTTOM)
+        # self.frame_plot_config = Frame(self.main_frame,
+        #                                bg=bg_color)
+        # self.frame_plot_config.pack(fill=BOTH, side=BOTTOM)
 
         # Frame for plots
-        self.frame_plot = Frame(self.frame_plot_config,
-                                width=self.width * (3 / 5),
-                                bg=bg_color)
-        self.frame_plot.pack(fill=BOTH, side=LEFT)
+        self.frame_plot = LabelFrame(self.main_frame,
+                                     text='Plot',
+                                     width=self.plot_width,
+                                     height=self.bottom_frame_height,
+                                     bg=bg_color)
+        # self.frame_plot.pack(fill=BOTH, side=LEFT)
+        self.frame_plot.grid(row=1, column=0)
 
         # Frame for config
-        self.frame_config = Frame(self.frame_plot_config,
-                                  width=self.width * (2 / 5),
-                                  highlightbackground='black',
-                                  highlightthickness=0.5,
-                                  bg=bg_color)
-        self.frame_config.pack(fill=BOTH, side=RIGHT, anchor='se')
+        self.frame_config = LabelFrame(self.main_frame,
+                                       text='Config',
+                                       width=self.config_width,
+                                       height=self.bottom_frame_height,
+                                       highlightbackground='black',
+                                       highlightthickness=0.5,
+                                       bg=bg_color)
+        # self.frame_config.pack(fill=BOTH, side=RIGHT, anchor='se')
+        self.frame_config.grid(row=1, column=1)
 
         # --- NIVEL 2 ---
 
         # Frame para desplegar tabla de pronostico
-        self.frame_table = Frame(self.main_frame,
-                                 width=self.width,
-                                 height=self.height/1.3,
-                                 bg=bg_color)
-        self.frame_table.pack(side=TOP, fill=BOTH)
+        self.frame_table = LabelFrame(self.main_frame,
+                                      text='table',
+                                      width=self.table_width,
+                                      height=self.top_frame_height,
+                                      bg=bg_color)
+        # self.frame_table.pack(side=TOP, fill=BOTH)
+        self.frame_table.grid(row=0, column=0, columnspan=2)
 
         # --- NIVEL 3 ---
 
@@ -350,6 +381,10 @@ class Main:
 
             except queue_.empty():
                 pass
+
+    def OnDoubleClick(self, event):
+        item = self.tree_view.selection()[0]
+        print("you clicked on", self.tree_view.item(item, "text"))
 
 
 class WindowSelectWorkPath:
