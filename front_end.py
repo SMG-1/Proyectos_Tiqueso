@@ -41,17 +41,22 @@ class Main:
         self.screen_width = GetSystemMetrics(0)
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
-        self.height = self.screen_height
+        self.height = self.screen_height-100
 
         self.top_frame_height = self.height / 2
         self.bottom_frame_height = self.height - self.top_frame_height
 
-        self.tree_width = self.width * (1 / 5)
-        self.plot_width = self.tree_width * 3
-        self.config_width = self.width - self.tree_width - self.plot_width
-        self.table_width = self.screen_width - self.tree_width
+        self.tree_width = self.width * 0.2
+        print(self.tree_width)
+        self.table_width = self.width * 0.8
+        print(self.table_width)
 
-        self.master.geometry('%dx%d+0+0' % (self.screen_width, self.screen_height))
+        self.plot_width = self.width * 0.6
+        print(self.plot_width)
+        self.config_width = self.width * 0.2
+        print(self.config_width)
+
+        self.master.geometry('%dx%d+0+0' % (self.width, self.height))
 
         # application instance
         self.back_end = Application(root_path)
@@ -89,15 +94,12 @@ class Main:
                                       orient=HORIZONTAL)
 
         self.tree_view = ttk.Treeview(self.master)
-        # for i in range(10):
-         #    self.tree_view.insert("", "end", text="Item %s" % i)
         self.tree_view.bind("<Double-1>", self.OnDoubleClick)
 
         self.main_frame = Frame(self.main_paned,
-                                width=self.width * (1 / 2),
-                                height=self.height
-                                )
-        # self.main_frame.pack()
+                                width=self.width,
+                                height=self.height,
+                                bg=bg_color)
 
         self.main_paned.add(self.tree_view)
         self.main_paned.add(self.main_frame)
@@ -105,53 +107,55 @@ class Main:
 
         # --- NIVEL 1 ---
 
-        # --- DECLARACION DE FRAMES CONTENEDORES ---
-
-        # Frame that contains plots to the left and config parameters to the right
-        # self.frame_plot_config = Frame(self.main_frame,
-        #                                bg=bg_color)
-        # self.frame_plot_config.pack(fill=BOTH, side=BOTTOM)
-
-        # Frame for plots
-        self.frame_plot = LabelFrame(self.main_frame,
-                                     text='Plot',
-                                     width=self.plot_width,
-                                     height=self.bottom_frame_height,
-                                     bg=bg_color)
-        # self.frame_plot.pack(fill=BOTH, side=LEFT)
-        self.frame_plot.grid(row=1, column=0)
-
-        # Frame for config
-        self.frame_config = LabelFrame(self.main_frame,
-                                       text='Config',
-                                       width=self.config_width,
-                                       height=self.bottom_frame_height,
-                                       highlightbackground='black',
-                                       highlightthickness=0.5,
-                                       bg=bg_color)
-        # self.frame_config.pack(fill=BOTH, side=RIGHT, anchor='se')
-        self.frame_config.grid(row=1, column=1)
-
-        # --- NIVEL 2 ---
-
+        # --- FRAMES CONTENEDORES ---
         # Frame para desplegar tabla de pronostico
         self.frame_table = LabelFrame(self.main_frame,
                                       text='table',
                                       width=self.table_width,
                                       height=self.top_frame_height,
                                       bg=bg_color)
-        # self.frame_table.pack(side=TOP, fill=BOTH)
-        self.frame_table.grid(row=0, column=0, columnspan=2)
+        # self.frame_table.grid(row=0, column=0)
+        self.frame_table.pack(fill='x',expand=True)
 
-        # --- NIVEL 3 ---
+        # Frame that contains plots to the left and config parameters to the right
+        self.bottom_frame = Frame(self.main_frame,
+                                  width=self.table_width,
+                                  height=self.bottom_frame_height,
+                                  bg=bg_color)
+        # self.bottom_frame.grid(row=1, column=0)
+        self.bottom_frame.pack()
 
-        # LabelFrame para contener modelos y ajustes de parametros
+        # Frame for plots
+        self.frame_plot = LabelFrame(self.bottom_frame,
+                                     text='Plot',
+                                     width=self.plot_width,
+                                     height=self.bottom_frame_height,
+                                     bg=bg_color)
+        # self.frame_plot.grid(row=1, column=0)
+        # self.frame_plot.pack(fill='both',expand=True, side=LEFT)
+
+
+        # Frame for config
+        self.frame_config = LabelFrame(self.bottom_frame,
+                                       text='Config',
+                                       width=self.config_width,
+                                       height=self.bottom_frame_height,
+                                       # highlightbackground='black',
+                                       # highlightthickness=0.5,
+                                       bg=bg_color)
+        # self.frame_config.grid(row=1, column=1)
+        self.frame_config.pack(fill='both',expand=True, side=RIGHT)
+
+
+        # --- NIVEL 2 ---
+
+        '''# LabelFrame para contener modelos y ajustes de parametros
         self.frame_modeler = LabelFrame(self.frame_config,
                                         text='Modelo',
                                         # width=self.screen_width / 6,
                                         # height=self.screen_height / 3,
                                         bg=bg_color)
-        self.frame_modeler.grid(row=2, column=0, columnspan=1, padx=10, pady=10)
+        # self.frame_modeler.grid(row=2, column=0, columnspan=1, padx=10, pady=10)
 
         # Label: Model
         self.lbl_choose_model_title = Label(self.frame_modeler,
@@ -159,33 +163,35 @@ class Main:
                                             padx=10,
                                             pady=10,
                                             bg=bg_color)
-        self.lbl_choose_model_title.grid(row=0, column=0)
+        self.lbl_choose_model_title.grid(row=0, column=0)'''
 
-        # Combobox: available models
+        '''# Combobox: available models
         self.combobox_choose_model = ttk.Combobox(self.frame_modeler,
                                                   value=list(self.back_end.models.values()))
         # self.combobox_choose_model.bind("<<ComboboxSelected>>", self.combo_box_callback)
         self.combobox_choose_model.current(0)
-        self.combobox_choose_model.grid(row=0, column=1, padx=10)
+        self.combobox_choose_model.grid(row=0, column=1, padx=10)'''
 
-        # Label: SKU
+        '''# Label: SKU
         self.lbl_choose_sku_title = Label(self.frame_modeler,
                                           text='Producto',
                                           padx=10,
                                           pady=10,
                                           bg=bg_color)
-        self.lbl_choose_sku_title.grid(row=1, column=0)
+        self.lbl_choose_sku_title.grid(row=1, column=0)'''
 
-        # Combobox: available models
+        '''# Combobox: available models
         self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
                                                 value="")
 
-        self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+        self.combobox_choose_sku.grid(row=1, column=1, padx=10)'''
 
         # Automatic load on boot
         self.update_tree_and_plot()
+        # self.run_forecast('DEFAULT', 0)
+        self.run_optimizer()
 
-        # Button to run forecast
+        '''# Button to run forecast
         self.btn_run_fcst = Button(self.frame_modeler,
                                    text='Ejecutar modelo',
                                    padx=10,
@@ -197,38 +203,38 @@ class Main:
                                     text='Visualización',
                                     # width=self.screen_width / 6,
                                     # height=self.screen_height / 3,
-                                    bg=bg_color)
-        self.frame_viz.grid(row=3, column=0, columnspan=1, padx=10, pady=10)
+                                    bg=bg_color)'''
+        # self.frame_viz.grid(row=3, column=0, columnspan=1, padx=10, pady=10)
 
         # Label: Model
-        self.lbl_choose_viz_title = Label(self.frame_viz,
+        '''self.lbl_choose_viz_title = Label(self.frame_viz,
                                           text='Modelo',
                                           padx=10,
                                           pady=10,
-                                          bg=bg_color).grid(row=0, column=0)
+                                          bg=bg_color).grid(row=0, column=0)'''
 
-        # Combobox: available models
+        '''# Combobox: available models
         viz_list = ['Entrenamiento', 'Predicción']
         self.combobox_choose_viz = ttk.Combobox(self.frame_viz,
                                                 value=viz_list)
         # self.combobox_choose_viz.bind("<<ComboboxSelected>>", self.combo_box_callback)
         self.combobox_choose_viz.current(0)
-        self.combobox_choose_viz.grid(row=0, column=1, padx=10)
+        self.combobox_choose_viz.grid(row=0, column=1, padx=10)'''
 
         # LabelFrame para modelado automatico
-        self.frame_auto = LabelFrame(self.frame_config,
+        '''self.frame_auto = LabelFrame(self.frame_config,
                                      text='Modelado Automático',
                                      # width=self.screen_width / 6,
                                      # height=self.screen_height / 3,
                                      bg=bg_color)
-        self.frame_auto.grid(row=4, column=0, columnspan=1, padx=10, pady=10)
+        # self.frame_auto.grid(row=4, column=0, columnspan=1, padx=10, pady=10)'''
 
-        # Button to run automated forecast
+        '''# Button to run automated forecast
         self.btn_run_optimizer = Button(self.frame_auto,
                                         text='Ejecutar optimizador',
                                         padx=10,
                                         command=self.run_optimizer)
-        self.btn_run_optimizer.grid(row=1, column=0, columnspan=2, pady=10)
+        self.btn_run_optimizer.grid(row=1, column=0, columnspan=2, pady=10)'''
 
         center_window(self.master, self.screen_width, self.screen_height)
 
@@ -238,11 +244,14 @@ class Main:
             self.line_plot.get_tk_widget().destroy()
 
         # add matplotlib Figure
-        dpi = 96
-        self.figure = Figure(figsize=((self.width * (3 / 5)) / dpi, (self.height / 5) / dpi), dpi=dpi)
+        dpi = 100
+        self.figure = Figure(figsize=(1800 / dpi, (self.bottom_frame_height-100) / dpi), dpi=dpi)
         self.ax = self.figure.add_subplot(1, 1, 1)
-        self.line_plot = FigureCanvasTkAgg(self.figure, self.frame_plot)
-        self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH)
+        self.line_plot = FigureCanvasTkAgg(self.figure, self.bottom_frame)
+        # toolbar = NavigationToolbar2Tk(self.line_plot, self.master, pack_toolbar=False)
+        # toolbar.update()
+        # self.line_plot.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
+        self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         if type == 'Demand':
             df.plot(x=x, y=y, legend=False, ax=self.ax)
@@ -258,6 +267,25 @@ class Main:
             df.columns = [x, y]
             df.iloc[:kwargs['idx'] + 1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
             df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
+
+    def update_tree_and_plot(self):
+        """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
+         combobox to the same location in the grid"""
+
+        # self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
+        #                                         value=list(self.back_end.segmented_data_sets.keys()))
+        # self.combobox_choose_sku.current(0)
+        # self.combobox_choose_sku.bind("<<ComboboxSelected>>",
+        #                               self.show_raw_data_plot)
+        # self.combobox_choose_sku.grid(row=1, column=1, padx=10)
+
+        self.back_end.create_segmented_data()
+
+        for i in list(self.back_end.segmented_data_sets.keys()):
+            self.tree_view.insert("", "end", text=i)
+        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
+
+        self.show_raw_data_plot('DEFAULT', 0)
 
     def show_raw_data_plot(self, sku, event):
         # get dictionary of datasets
@@ -280,47 +308,33 @@ class Main:
 
         self.create_fig(df, x, y, 'Demand')
 
-    def update_tree_and_plot(self):
-        """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
-         combobox to the same location in the grid"""
-
-        # self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
-        #                                         value=list(self.back_end.segmented_data_sets.keys()))
-        # self.combobox_choose_sku.current(0)
-        # self.combobox_choose_sku.bind("<<ComboboxSelected>>",
-        #                               self.show_raw_data_plot)
-        # self.combobox_choose_sku.grid(row=1, column=1, padx=10)
-
-        self.back_end.create_segmented_data()
-
-        for i in list(self.back_end.segmented_data_sets.keys()):
-            self.tree_view.insert("", "end", text=i)
-        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
-
-        self.show_raw_data_plot('DEFAULT', 0)
-
-
-
-    def run_forecast(self):
+    def run_forecast(self, sku, event):
         # get dictionary of datasets
-        sep_df_list = self.back_end.segmented_data_sets
+        sep_df_dict = self.back_end.segmented_data_sets
 
         # filter the dictionary using the current selected combobox value
-        df = sep_df_list[self.combobox_choose_sku.get()]
+        # df = sep_df_list[self.combobox_choose_sku.get()]
 
         # get selected model
-        selected_model = self.combobox_choose_model.get()
+        # selected_model = self.combobox_choose_model.get()
 
-        df_fitted = self.back_end.fit_to_data(df, selected_model)
+        if sku == 'DEFAULT':
+            temp_sku = list(sep_df_dict.keys())[0]
+            df = sep_df_dict[temp_sku]
+        else:
+            df = sep_df_dict[sku]
+
+        df_fitted = self.back_end.fit_to_data(df, 'ARIMA')
 
         df_pred = self.back_end.predict_fwd()
 
         # print eval
         self.back_end.evaluate_fit()
 
-        self.combobox_choose_viz.get()
+        # self.combobox_choose_viz.get()
 
-        if self.combobox_choose_viz.get() == 'Entrenamiento':
+        # if self.combobox_choose_viz.get() == 'Entrenamiento':
+        if 2>1:
 
             self.create_fig(df_fitted, x='Fecha', y='Demanda', type='Fitted', y2='Pronóstico')
 
@@ -366,7 +380,7 @@ class Main:
         """Create ThreadedClient class and pass it to a periodic call function."""
 
         if process == 'Optimizador':
-            self.btn_run_optimizer.config(state='disabled')
+            # self.btn_run_optimizer.config(state='disabled')
             queue_ = queue.Queue()
 
             thread = ThreadedClient(queue_, self.back_end, process)
@@ -379,12 +393,12 @@ class Main:
         self.check_queue(queue_)
 
         if thread.is_alive():
-            print('what')
             self.master.after(100, lambda: self.periodic_call(process, thread, queue_))
 
         else:
             if process == 'Optimizador':
-                self.btn_run_optimizer.config(state='active')
+                # self.btn_run_optimizer.config(state='active')
+                pass
 
     def check_queue(self, queue_):
 
@@ -396,7 +410,7 @@ class Main:
 
                 if msg[0] == 'Listo':
                     print(msg[0])
-                    self.listbox.insert(END, msg[1])
+                    # self.listbox.insert(END, msg[1])
 
             except queue_.empty():
                 pass
