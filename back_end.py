@@ -246,7 +246,7 @@ class Application:
         self.model_df = None
 
         # amount of periods to forecast out of sample
-        self.periods_fwd = None
+        self.periods_fwd = int(self.config_shelf.send_parameter('periods_fwd', model='ARIMA'))
 
         # feature names for the modelling data
         self.var_names = ['Demanda', 'Pronóstico']
@@ -398,15 +398,8 @@ class Application:
         # assign the dictionary to class attribute
         self.segmented_data_sets = data_sets_dict
 
-    def fit_to_data(self, df: pd.DataFrame, model_in_name: str):
+    def fit_to_data(self, df: pd.DataFrame, model_name: str):
         """Fit any of the supported models to the data and save the model used."""
-
-        # use model name to get values from the config dictionary
-        if model_in_name == 'Auto-regresión':
-            model_name = 'AutoReg'
-
-        else:
-            model_name = model_in_name
 
         # get parameter names
         param_names = self.config_shelf.send_dict()[model_name]['params'].keys()
@@ -434,7 +427,7 @@ class Application:
         self.df_total = copy.deepcopy(self.model_df)
 
         # create the model with the selected parameters
-        if model_in_name == 'Auto-regresión':
+        if model_name == 'AutoReg':
             # create model AutoRegression model with DataFrame parameter and assign parameters according to dictionary
             self.active_model = AutoReg(df,
                                         lags=param_dict['lags'],
@@ -442,6 +435,13 @@ class Application:
                                         old_names=False)
 
         if model_name == 'ARIMA':
+            results = pm.auto_arima(self.model_df,
+                                    out_of_sample_size=20,
+                                    stepwise=True)
+            print('Auto-ARIMA Results: ', results.summary())
+
+            # queue_.put(['Listo', results.summary()])
+
             self.active_model = SARIMAX(df,
                                         order=(param_dict['p'],
                                                param_dict['d'],
@@ -486,7 +486,7 @@ class Application:
         # calculate the mean absolute error
         mae = df_eval['Abs_Error'].mean()
         print('MAE: ', mae)
-
+    
         # calculate the mean percentage absolute error
         mae_perc = mae / df_eval['Demanda'].mean()
         print('MAE %: ', mae_perc)
@@ -495,48 +495,37 @@ class Application:
 
     def get_best_model(self, queue_):
 
-        results = pm.auto_arima(self.model_df,
-                                out_of_sample_size=20,
-                                stepwise=True)
-        print('Auto-ARIMA Results: ', results.summary())
+        for sku, df in self.segmented_data_sets.items():
+            results = pm.auto_arima(df.loc[:, 'Demanda'],
+                                    out_of_sample_size=20,
+                                    stepwise=True)
+            fitted_model = results.fit(df.loc[:, 'Demanda'])
 
-        queue_.put(['Listo', results.summary()])
+            df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
+            fitted_values = pd.DataFrame(results.arima_res_.fittedvalues, columns=['Fitted'], index=df_total.index)
+            df_total = pd.concat([df_total, fitted_values], axis=1)
 
-    def predict_fwd(self):
+            preds = self.predict_fwd(df, fitted_model)
+
+            df_total = pd.concat([df_total, preds], axis=1)
+
+            print(f'SKU: {sku}\nAuto-ARIMA Results: ', results.summary())
+
+        # queue_.put(['Listo', results.summary()])
+
+    def predict_fwd(self, df, fitted_model):
         """Predict N periods forward using self.periods_fwd as N."""
 
-        pred_start_date = pd.date_range(self.model_df.index.max(),
-                                        periods=self.periods_fwd).min() + datetime.timedelta(days=1)
-        pred_end_date = pd.date_range(self.model_df.index.max(), periods=self.periods_fwd).max()
+        # create index from the max date in the original dataset to periods_fwd days forward
+        pred_index = pd.date_range(start=df.index.max(),
+                                   end=df.index.max() + datetime.timedelta(days=self.periods_fwd-1))
 
-        self.predictions = self.fitted_model.predict(start=pred_start_date,
-                                                     end=pred_end_date,
-                                                     dynamic=True)
+        # predict on OOS using the fitted model
+        predictions = fitted_model.predict(n_periods=self.periods_fwd)
+        predictions = pd.DataFrame(predictions, index=pred_index)
+        predictions.columns = [self.var_names[0]]
 
-        col_name = self.var_names[1]
-        self.predictions = pd.DataFrame(self.predictions)
-        self.predictions.columns = [col_name]
-
-        # create dataframe with original data and predictions
-        self.df_real_preds = pd.concat([self.model_df, self.predictions], axis=0)
-
-        self.df_forecast = pd.concat([self.df_real_vs_fitted, self.predictions], axis=0)
-        self.df_total = pd.concat([self.df_total, self.df_forecast], axis=1)
-        self.df_total = self.df_total.iloc[:, [0, -1]]
-        self.df_total = self.df_total.round(1)
-        self.df_total.fillna('-', inplace=True)
-        self.df_total = self.df_total.reset_index()
-
-        self.df_total['Fecha'] = self.df_total['Fecha'].dt.strftime('%d-%m-%Y')
-        self.df_total = self.df_total.set_index('Fecha')
-
-        self.df_total = self.df_total.T
-        self.df_total.rename(index={0: self.var_names[0],
-                                    1: self.var_names[1]},
-                             inplace=True)
-
-
-        return self.df_real_preds
+        return predictions
 
 
 if __name__ == '__main__':
