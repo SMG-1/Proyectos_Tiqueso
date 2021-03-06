@@ -41,7 +41,7 @@ class Main:
         self.screen_width = GetSystemMetrics(0)
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
-        self.height = self.screen_height-100
+        self.height = self.screen_height - 100
 
         self.top_frame_height = self.height / 2
         self.bottom_frame_height = self.height - self.top_frame_height
@@ -94,7 +94,7 @@ class Main:
                                       orient=HORIZONTAL)
 
         self.tree_view = ttk.Treeview(self.master)
-        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
+        self.tree_view.bind("<Double-1>", self.on_double_click)
 
         self.main_frame = Frame(self.main_paned,
                                 width=self.width,
@@ -115,7 +115,7 @@ class Main:
                                       height=self.top_frame_height,
                                       bg=bg_color)
         # self.frame_table.grid(row=0, column=0)
-        self.frame_table.pack(fill='x',expand=True)
+        self.frame_table.pack(fill='x', expand=True)
 
         # Frame that contains plots to the left and config parameters to the right
         self.bottom_frame = Frame(self.main_frame,
@@ -134,7 +134,6 @@ class Main:
         # self.frame_plot.grid(row=1, column=0)
         # self.frame_plot.pack(fill='both',expand=True, side=LEFT)
 
-
         # Frame for config
         self.frame_config = LabelFrame(self.bottom_frame,
                                        text='Config',
@@ -144,10 +143,15 @@ class Main:
                                        # highlightthickness=0.5,
                                        bg=bg_color)
         # self.frame_config.grid(row=1, column=1)
-        self.frame_config.pack(fill='both',expand=True, side=RIGHT)
-
+        self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- NIVEL 2 ---
+        # Combobox: available models
+        plot_types = ['Datos originales', 'Modelo']
+        self.combobox_plot_type = ttk.Combobox(self.frame_config, value=plot_types)
+        # self.combobox_choose_model.bind("<<ComboboxSelected>>", self.combo_box_callback)
+        self.combobox_plot_type.current(0)
+        self.combobox_plot_type.pack(padx=10)
 
         '''# LabelFrame para contener modelos y ajustes de parametros
         self.frame_modeler = LabelFrame(self.frame_config,
@@ -188,7 +192,6 @@ class Main:
 
         # Automatic load on boot
         self.update_tree_and_plot()
-        # self.run_forecast('DEFAULT', 0)
         self.run_optimizer()
 
         '''# Button to run forecast
@@ -238,75 +241,107 @@ class Main:
 
         center_window(self.master, self.screen_width, self.screen_height)
 
-    def create_fig(self, df, x, y, type, **kwargs):
+    def create_fig(self, df, x, y, plot_type, **kwargs):
         # if line plot isn't empty, destroy the widget before adding a new one
         if self.line_plot is not None:
             self.line_plot.get_tk_widget().destroy()
 
         # add matplotlib Figure
         dpi = 100
-        self.figure = Figure(figsize=(1800 / dpi, (self.bottom_frame_height-100) / dpi), dpi=dpi)
+        self.figure = Figure(figsize=(1800 / dpi, (self.bottom_frame_height - 100) / dpi), dpi=dpi)
         self.ax = self.figure.add_subplot(1, 1, 1)
         self.line_plot = FigureCanvasTkAgg(self.figure, self.bottom_frame)
-        # toolbar = NavigationToolbar2Tk(self.line_plot, self.master, pack_toolbar=False)
-        # toolbar.update()
-        # self.line_plot.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
         self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
-        if type == 'Demand':
-            df.plot(x=x, y=y, legend=False, ax=self.ax)
+        if plot_type == 'Demand':
+            df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax)
 
-        if type == 'Fitted':
+        if plot_type == 'Fitted':
             # create plot with index as X value, and demand as y value
             df = df.reset_index()
             df.plot(x=x, y=y, color='b', ax=self.ax)
             df.plot(x=x, y=kwargs['y2'], color='r', ax=self.ax)
 
-        if type == 'Forecast':
+        if plot_type == 'Forecast2':
             df = df.reset_index()
             df.columns = [x, y]
             df.iloc[:kwargs['idx'] + 1, :].plot(x=x, y=y, color='b', ax=self.ax, label=y)
             df.iloc[kwargs['idx']:].plot(x=x, y=y, color='r', ax=self.ax, label=kwargs['y2'])
 
+        if plot_type == 'Forecast':
+            df = df.reset_index()
+            col_names = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico']
+            df.columns = col_names
+            df.plot(x=col_names[0], y=col_names[1], color='b', ax=self.ax)
+            df.plot(x=col_names[0], y=col_names[2], color='r', ax=self.ax)
+            df.plot(x=col_names[0], y=col_names[3], color='g', ax=self.ax)
+
+
+
     def update_tree_and_plot(self):
         """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
          combobox to the same location in the grid"""
-
-        # self.combobox_choose_sku = ttk.Combobox(self.frame_modeler,
-        #                                         value=list(self.back_end.segmented_data_sets.keys()))
-        # self.combobox_choose_sku.current(0)
-        # self.combobox_choose_sku.bind("<<ComboboxSelected>>",
-        #                               self.show_raw_data_plot)
-        # self.combobox_choose_sku.grid(row=1, column=1, padx=10)
 
         self.back_end.create_segmented_data()
 
         for i in list(self.back_end.segmented_data_sets.keys()):
             self.tree_view.insert("", "end", text=i)
-        self.tree_view.bind("<Double-1>", self.OnDoubleClick)
+        self.tree_view.bind("<Double-1>", self.on_double_click)
 
-        self.show_raw_data_plot('DEFAULT', 0)
+        self.show_plot('DEFAULT', 'Demand', 0)
 
-    def show_raw_data_plot(self, sku, event):
-        # get dictionary of datasets
-        sep_df_dict = self.back_end.segmented_data_sets
+    def show_plot(self, sku, plot_type, event):
+        """Call the create figure function with the data of the passed sku parameter.
 
-        # filter the dictionary using the current selected combobox value
+        sku: name of the SKU or DEFAULT, if DEFAULT, shows the currently selected SKU on the tree view
+        plot_type: Demand plots the raw data, Forecast shows the fitted values and the forecast.
+        """
+        if plot_type == 'Demand':
+            # get dictionary of datasets
+            sep_df_dict = self.back_end.segmented_data_sets
 
-        # df = sep_df_dict[self.combobox_choose_sku.get()]
-        if sku == 'DEFAULT':
-            temp_sku = list(sep_df_dict.keys())[0]
-            df = sep_df_dict[temp_sku]
+            # filter the dictionary using the current selected combobox value
+
+            # df = sep_df_dict[self.combobox_choose_sku.get()]
+            if sku == 'DEFAULT':
+                temp_sku = list(sep_df_dict.keys())[0]
+                df = sep_df_dict[temp_sku]
+            else:
+                df = sep_df_dict[sku]
+            x = 'Fecha'
+            y = 'Demanda'
+
+            # get date column, and groupby date, finally plot demand vs date using the declared figure axis
+            df = df.reset_index()
+            df = df.groupby('Fecha').sum().reset_index()
+
+            self.pd_table = pandastable.Table(self.frame_table,
+                                              dataframe=df,
+                                              showtoolbar=True,
+                                              showstatusbar=True)
+            self.pd_table.show()
+
+            self.create_fig(df, x, y, plot_type)
+
         else:
-            df = sep_df_dict[sku]
-        x = 'Fecha'
-        y = 'Demanda'
 
-        # get date column, and groupby date, finally plot demand vs date using the declared figure axis
-        df = df.reset_index()
-        df = df.groupby('Fecha').sum().reset_index()
+            sep_df_dict = self.back_end.fitted_dfs
 
-        self.create_fig(df, x, y, 'Demand')
+            if sku == 'DEFAULT':
+                temp_sku = list(sep_df_dict.keys())[0]
+                df = sep_df_dict[temp_sku]
+            else:
+                df = sep_df_dict[sku]
+
+
+            self.pd_table = pandastable.Table(self.frame_table,
+                                              dataframe=df,
+                                              showtoolbar=True,
+                                              showstatusbar=True)
+
+            self.create_fig(df, 'bla', 'blaa', 'Forecast')
+
+
 
     def run_forecast(self, sku, event):
         # get dictionary of datasets
@@ -326,17 +361,15 @@ class Main:
 
         df_fitted = self.back_end.fit_to_data(df, 'ARIMA')
 
-        df_pred = self.back_end.predict_fwd()
-
         # print eval
         self.back_end.evaluate_fit()
 
         # self.combobox_choose_viz.get()
 
         # if self.combobox_choose_viz.get() == 'Entrenamiento':
-        if 2>1:
+        if 2 > 1:
 
-            self.create_fig(df_fitted, x='Fecha', y='Demanda', type='Fitted', y2='Pronóstico')
+            self.create_fig(df_fitted, x='Fecha', y='Demanda', plot_type='Fitted', y2='Pronóstico')
 
             self.pd_table = pandastable.Table(self.frame_table,
                                               dataframe=self.back_end.df_total,
@@ -346,7 +379,7 @@ class Main:
 
         else:
 
-            self.create_fig(df_pred, x='Fecha', y='Demanda', type='Forecast', idx=df.shape[0], y2='Pronóstico')
+            self.create_fig(df_pred, x='Fecha', y='Demanda', plot_type='Forecast', idx=df.shape[0], y2='Pronóstico')
 
     def run_optimizer(self):
 
@@ -361,6 +394,7 @@ class Main:
         WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
 
         # update combobox with new data
         # self.update_tree_and_plot()
@@ -386,7 +420,15 @@ class Main:
             thread = ThreadedClient(queue_, self.back_end, process)
             thread.start()
 
-            self.periodic_call(process, thread, queue_)
+            self.new_win = Toplevel(self.master)
+            WindowTraining(self.new_win, self.back_end, queue_, thread, 540,
+                                        300)
+            self.new_win.grab_set()
+            self.master.wait_window(self.new_win)
+
+            self.show_plot('DEFAULT', 'Forecast', 0)
+
+            # self.periodic_call(process, thread, queue_)
 
     def periodic_call(self, process, thread, queue_):
 
@@ -408,17 +450,25 @@ class Main:
 
                 msg = queue_.get(False)
 
+                if msg[0] != '':
+                    print(msg[0])
+
                 if msg[0] == 'Listo':
                     print(msg[0])
-                    # self.listbox.insert(END, msg[1])
 
             except queue_.empty():
                 pass
 
-    def OnDoubleClick(self, event):
+    def on_double_click(self, event):
         item = self.tree_view.selection()[0]
         # print("you clicked on", self.tree_view.item(item, "text"))
-        self.show_raw_data_plot(sku=self.tree_view.item(item, "text"), event=event)
+
+        if self.combobox_plot_type.get() == 'Datos originales':
+            self.show_plot(self.tree_view.item(item, "text"), 'Demand',event)
+
+        else:
+
+            self.show_plot(self.tree_view.item(item, "text"), 'Forecast', event)
 
 
 class WindowSelectWorkPath:
@@ -647,6 +697,60 @@ class ConfigModel:
         self.master.destroy()
 
 
+class WindowTraining:
+    def __init__(self, master, app: Application, queue_, thread_, width, height):
+        self.master = master
+        self.app = app
+        self.width = width
+        self.height = height
+        self.queue_ = queue_
+        self.thread_ = thread_
+
+        # --- WIDGETS ---
+
+        # listbox to print status
+        self.listbox = Listbox(self.master,
+                               width=100)
+        self.listbox.pack()
+
+        # progress bar to show progress
+        self.progress_bar = ttk.Progressbar(self.master,
+                                            orient='horizontal',
+                                            length=300,
+                                            mode='determinate')
+        self.progress_bar['maximum'] = 1.0
+        self.progress_bar.pack()
+
+        self.periodic_call()
+
+    def periodic_call(self):
+
+        self.check_queue()
+
+        if self.thread_.is_alive():
+            self.master.after(100, self.periodic_call)
+
+        else:
+            # close window
+            self.close_window()
+
+    def check_queue(self):
+        while self.queue_.qsize():
+            try:
+                msg = self.queue_.get(False)
+                self.listbox.insert('end', msg[0])
+                if msg[1] > 0:
+                    self.progress_bar['value'] = msg[1]
+
+                print(f'Progress: {msg[1]}')
+
+            except self.queue_.empty:
+                pass
+
+    def close_window(self):
+        self.master.destroy()
+
+
 class ThreadedClient(threading.Thread):
     def __init__(self, queue, application: Application, process):
         threading.Thread.__init__(self)
@@ -656,7 +760,7 @@ class ThreadedClient(threading.Thread):
 
     def run(self):
         if self.process == 'Optimizador':
-            self.application.get_best_model(self.queue)
+            self.application.get_best_models(self.queue)
 
 
 if __name__ == '__main__':
