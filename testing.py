@@ -75,3 +75,10 @@ treev.insert("", 'end', text ="L13",
 
 # Calling mainloop
 window.mainloop()
+
+dict_ = {'a': 1, 'b':2, 'c':3}
+total_ = len(dict_.keys())
+
+for idx, (let, num) in enumerate(dict_.items(), 1):
+	print(f'Index {idx}, letter: {let}, number: {num} ')
+	print(f'Progress {round(idx /total_, 2)}')
