@@ -251,17 +251,8 @@ class Application:
         # feature names for the modelling data
         self.var_names = ['Demanda', 'Pronóstico']
 
-        # dataframe to compare real data vs fitted data
-        self.df_real_vs_fitted = None
-
-        # OOS predictions made by the model
-        self.predictions = None
-
-        # real data + OOS predictions
-        self.df_real_preds = None
-
-        # dataframe with original data, fitted values and OOS predictions
-        self.df_total = pd.DataFrame()
+        # dictionary to store dataframes with original data, fitted values and OOS forecast
+        self.fitted_dfs = {}
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -387,6 +378,7 @@ class Application:
         # create total demand dataset, grouped by date
         grouped_df = df.reset_index()
         grouped_df = grouped_df.groupby('Fecha').sum().reset_index()
+        grouped_df = grouped_df.set_index('Fecha')
 
         # append grouped df to list, and label as Total
         unique_combinations.append('Total')
@@ -493,9 +485,13 @@ class Application:
 
         return [self.fitted_model.aic, self.fitted_model.bic, mae, mae_perc]
 
-    def get_best_model(self, queue_):
+    def get_best_models(self, queue_):
 
-        for sku, df in self.segmented_data_sets.items():
+        num_keys = len(self.segmented_data_sets.keys())
+
+        for idx, (sku, df) in enumerate(self.segmented_data_sets.items(), 1):
+
+            queue_.put([f'Entrenando modelo para {sku}.', 0])
             results = pm.auto_arima(df.loc[:, 'Demanda'],
                                     out_of_sample_size=20,
                                     stepwise=True)
@@ -509,9 +505,13 @@ class Application:
 
             df_total = pd.concat([df_total, preds], axis=1)
 
-            print(f'SKU: {sku}\nAuto-ARIMA Results: ', results.summary())
+            self.fitted_dfs[sku] = df_total
 
-        # queue_.put(['Listo', results.summary()])
+            queue_.put([f'Modelo para {sku} listo.', idx/num_keys])
+
+            # print(f'SKU: {sku}\nAuto-ARIMA Results: ', results.summary())
+
+        queue_.put(['Listo', 1])
 
     def predict_fwd(self, df, fitted_model):
         """Predict N periods forward using self.periods_fwd as N."""
@@ -533,4 +533,4 @@ if __name__ == '__main__':
 
     app = Application(root_path)
     # app.set_path('Demand', r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.xlsx")
-    app.set_path('Demand', r"C:\Users\smirand27701\Desktop\Nueva carpeta\Ventas sample.csv")
+    # app.set_path('Demand', r"C:\Users\smirand27701\Desktop\Nueva carpeta\Ventas sample.csv")
