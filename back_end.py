@@ -116,18 +116,12 @@ class ConfigShelf:
         config_shelf = shelve.open(self._path)
 
         # set keys list
-        self.model_dict = {'AutoReg': {'params': {'lags': [1, tuple(range(1, 50, 1))],
-                                                  'trend': ['ct', ('n', 'ct', 'c', 't')],
-                                                  'periods_fwd': [50, int]}},
-
-                           'ARIMA': {'params': {'p': [1, tuple(range(1, 10, 1))],
-                                                'd': [1, tuple(range(1, 10, 1))],
-                                                'q': [1, tuple(range(1, 10, 1))],
-                                                'trend': ['ct', ('n', 'ct', 'c', 't')],
-                                                'periods_fwd': [50, int]}}}
+        self.config_dict = {'periods_fwd': 30,
+                            'File_name': 'Pronóstico',
+                            'Agg_viz': 'Diario'}
 
         # try to get value from key, if empty initialize
-        for key, value in self.model_dict.items():
+        for key, value in self.config_dict.items():
             try:
                 config_shelf[key]
             except KeyError:
@@ -158,9 +152,9 @@ class ConfigShelf:
 
         else:
             # set value to key
-            shelf[value] = parameter
+            shelf[parameter] = value
 
-        self.model_dict = shelf
+        self.config_dict = shelf
 
         # save and close shelf
         self.close_shelf(shelf)
@@ -184,8 +178,8 @@ class ConfigShelf:
 
         shelf = self.open_shelf(False)
 
-        """if parameter not in self.model_dict.keys():
-            raise ValueError(f'{parameter} is not a valid parameter.')"""
+        if parameter not in self.config_dict.keys():
+            raise ValueError(f'{parameter} is not a valid parameter.')
 
         if 'model' in kwargs.keys():
             model_ = kwargs['model']
@@ -246,13 +240,16 @@ class Application:
         self.model_df = None
 
         # amount of periods to forecast out of sample
-        self.periods_fwd = int(self.config_shelf.send_parameter('periods_fwd', model='ARIMA'))
+        self.periods_fwd = int(self.config_shelf.send_parameter('periods_fwd'))
 
         # feature names for the modelling data
         self.var_names = ['Demanda', 'Pronóstico']
 
+        # dictionary to store fitted models for forecasting
+        self.dict_fitted_models = {}
+
         # dictionary to store dataframes with original data, fitted values and OOS forecast
-        self.fitted_dfs = {}
+        self.dict_fitted_dfs = {}
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -288,6 +285,7 @@ class Application:
 
         # Get Demand path from parameters shelf
         path = self.file_paths_shelf.send_path('Demand')
+        # path = ''
 
         if path == '':
             err = "El directorio hacia el archivo de demanda no esta definido."
@@ -390,76 +388,6 @@ class Application:
         # assign the dictionary to class attribute
         self.segmented_data_sets = data_sets_dict
 
-    def fit_to_data(self, df: pd.DataFrame, model_name: str):
-        """Fit any of the supported models to the data and save the model used."""
-
-        # get parameter names
-        param_names = self.config_shelf.send_dict()[model_name]['params'].keys()
-
-        # get parameter values
-        param_values = [self.config_shelf.send_parameter(param, model=model_name) for param in param_names]
-
-        # try to convert parameter values to int, some are saved in str format by the combobox
-        for idx, param in enumerate(param_values):
-            try:
-                param_values[idx] = int(param)
-            except ValueError:
-                pass
-            except TypeError:
-                pass
-
-        # create temporary parameter dictionary with names and values to be used
-        param_dict = dict(zip(param_names, param_values))
-
-        # get only column of values of the dataframe
-        df = df.iloc[:, -1]
-
-        # save the df parameter as a class attribute to be used for predictions
-        self.model_df = pd.DataFrame(df)
-        self.df_total = copy.deepcopy(self.model_df)
-
-        # create the model with the selected parameters
-        if model_name == 'AutoReg':
-            # create model AutoRegression model with DataFrame parameter and assign parameters according to dictionary
-            self.active_model = AutoReg(df,
-                                        lags=param_dict['lags'],
-                                        trend=param_dict['trend'],
-                                        old_names=False)
-
-        if model_name == 'ARIMA':
-            results = pm.auto_arima(self.model_df,
-                                    out_of_sample_size=20,
-                                    stepwise=True)
-            print('Auto-ARIMA Results: ', results.summary())
-
-            # queue_.put(['Listo', results.summary()])
-
-            self.active_model = SARIMAX(df,
-                                        order=(param_dict['p'],
-                                               param_dict['d'],
-                                               param_dict['q']))
-
-        # set periods forward using the value set in the parameter dictionary
-        self.periods_fwd = param_dict['periods_fwd']
-
-        # get model fitted to the input data
-        self.fitted_model = self.active_model.fit()
-
-        # predict on original index to obtain fitted values
-        fitted_vals = self.fitted_model.predict()
-
-        # add the fitted values to the original data as a new column
-        df_tot = pd.concat([df, fitted_vals], axis=1)
-
-        # change column names
-        df_tot.columns = self.var_names
-        df_tot.dropna(subset=[self.var_names[-1]], inplace=True)
-
-        # assign to instance attribute
-        self.df_real_vs_fitted = df_tot
-
-        return df_tot
-
     def evaluate_fit(self):
         """"""
 
@@ -478,7 +406,7 @@ class Application:
         # calculate the mean absolute error
         mae = df_eval['Abs_Error'].mean()
         print('MAE: ', mae)
-    
+
         # calculate the mean percentage absolute error
         mae_perc = mae / df_eval['Demanda'].mean()
         print('MAE %: ', mae_perc)
@@ -487,45 +415,111 @@ class Application:
 
     def get_best_models(self, queue_):
 
+        # check if data is loaded
+        if self.segmented_data_sets is None:
+            raise ValueError('No hay datos cargados para crear un modelo.')
+
+        # check amount of datasets to use as a way of measuring progress bar
         num_keys = len(self.segmented_data_sets.keys())
 
+        # iterate over dataframes for training and predictions
         for idx, (sku, df) in enumerate(self.segmented_data_sets.items(), 1):
-
             queue_.put([f'Entrenando modelo para {sku}.', 0])
+
+            # get the best ARIMA model for each df
             results = pm.auto_arima(df.loc[:, 'Demanda'],
                                     out_of_sample_size=20,
                                     stepwise=True)
+
+            # fit the best model to the dataset
             fitted_model = results.fit(df.loc[:, 'Demanda'])
 
+            # create a dataframe with the real data
             df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
+
+            # create a dataframe with the fitted values
             fitted_values = pd.DataFrame(results.arima_res_.fittedvalues, columns=['Fitted'], index=df_total.index)
+
+            # join the real data with the fitted values on the rows axis
             df_total = pd.concat([df_total, fitted_values], axis=1)
 
+            # call a function to get an out of sample prediction, result is a dataframe with predictions
             preds = self.predict_fwd(df, fitted_model)
 
+            # concat the predictions to the (data, fitted) dataset to get all values in one dataframe
             df_total = pd.concat([df_total, preds], axis=1)
 
-            self.fitted_dfs[sku] = df_total
+            # change column names
+            df_total.columns = ['Demanda', 'Ajuste', 'Pronóstico']
 
-            queue_.put([f'Modelo para {sku} listo.', idx/num_keys])
+            # add the whole dataframe to a dictionary with the product name as the key
+            self.dict_fitted_dfs[sku] = df_total
 
-            # print(f'SKU: {sku}\nAuto-ARIMA Results: ', results.summary())
+            queue_.put([f'Modelo para {sku} listo.', idx / num_keys])
 
         queue_.put(['Listo', 1])
 
     def predict_fwd(self, df, fitted_model):
         """Predict N periods forward using self.periods_fwd as N."""
 
+        periods_fwd = self.config_shelf.send_parameter('periods_fwd')
+
         # create index from the max date in the original dataset to periods_fwd days forward
         pred_index = pd.date_range(start=df.index.max(),
-                                   end=df.index.max() + datetime.timedelta(days=self.periods_fwd-1))
+                                   end=df.index.max() + datetime.timedelta(days=periods_fwd - 1))
 
         # predict on OOS using the fitted model
-        predictions = fitted_model.predict(n_periods=self.periods_fwd)
+        predictions = fitted_model.predict(n_periods=periods_fwd)
         predictions = pd.DataFrame(predictions, index=pred_index)
         predictions.columns = [self.var_names[0]]
 
         return predictions
+
+    def refresh_predictions(self):
+
+        if self.dict_fitted_models is None:
+            raise NameError('No se tienen modelos entrenados, debe correr el optimizador primero.')
+
+        else:
+            # get new predictions for each dataset
+            for sku, df in self.segmented_data_sets.items():
+
+                # get the product's fitted model
+                model = self.dict_fitted_models[sku]
+
+                # get the product's fitted dataset (demand, fitted values, OOS forecast)
+                total_df_old = self.dict_fitted_dfs[sku]
+
+                # drop old predictions from the fitted dataset
+                total_df_old = total_df_old[total_df_old['Pronóstico'].notnull()]
+
+                # get new predictions
+                new_preds = self.predict_fwd(df, model)
+
+                # add new predictions to the old dataset
+                total_df_new = pd.concat([total_df_old, new_preds], axis=1)
+
+                # replace the new dataset with the old one on the fitted dataframes dictionary
+                self.dict_fitted_dfs[sku] = total_df_new
+
+
+    def export_data(self, path, file_name, extension):
+
+        file_name = file_name + extension
+
+        df_export = pd.DataFrame()
+        for sku, df in self.dict_fitted_dfs.items():
+            df = df.reset_index()
+            df_export = pd.concat([df_export, df], axis=0)
+
+        if extension == '.xlsx':
+            df_export.to_excel(os.path.join(path, file_name),
+                               sheet_name='Pronostico',
+                               index=False)
+
+        elif extension == '.csv':
+            df_export.to_csv(os.path.join(path, file_name),
+                             index=False)
 
 
 if __name__ == '__main__':
