@@ -137,11 +137,18 @@ class Main:
                                  width=self.table_width,
                                  height=self.top_frame_height,
                                  bg=bg_color)
-        # self.frame_table.grid(row=0, column=0)
         self.frame_table.pack(fill='x', expand=True, anchor='n')
 
+        # Notebook to alternate between plot and metrics using a tab system
+        self.notebook_frame = ttk.Notebook(self.bottom_frame)
+        self.tab_plot = ttk.Frame(self.notebook_frame)
+        self.tab_metrics = ttk.Frame(self.notebook_frame)
+        self.notebook_frame.add(self.tab_plot, text='Gráfico')
+        self.notebook_frame.add(self.tab_metrics, text='Métricas', state='disabled')
+        self.notebook_frame.pack(expand=True, fill="both", side=LEFT)
+
         # Frame for plots
-        self.frame_plot = LabelFrame(self.bottom_frame,
+        self.frame_plot = LabelFrame(self.tab_plot,
                                      text='Plot',
                                      width=self.plot_width,
                                      height=self.bottom_frame_height,
@@ -152,7 +159,8 @@ class Main:
         # Frame for config
         self.frame_config = LabelFrame(self.bottom_frame,
                                        text='Configuración',
-                                       width=self.config_width,
+                                       # width=self.config_width,
+                                       width = 500,
                                        height=self.bottom_frame_height,
                                        # highlightbackground='black',
                                        # highlightthickness=0.5,
@@ -207,7 +215,7 @@ class Main:
         dpi = 100
         self.figure = Figure(figsize=(1800 / dpi, self.bottom_frame_height / dpi), dpi=dpi)
         self.ax = self.figure.add_subplot(1, 1, 1)
-        self.line_plot = FigureCanvasTkAgg(self.figure, self.bottom_frame)
+        self.line_plot = FigureCanvasTkAgg(self.figure, self.tab_plot)
         self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         df = df.reset_index()
@@ -229,6 +237,9 @@ class Main:
 
     def show_table(self, df, table_type):
 
+        if table_type == 'Demand':
+            df.drop(columns=['Codigo', 'Nombre'], inplace=True)
+
         if self.combobox_time_freq.get() == 'Semanal':
             df = df.groupby(pd.Grouper(freq='1W')).sum()
             df = df.reset_index()
@@ -243,7 +254,7 @@ class Main:
 
         else:
             df = df.reset_index()
-            df = df[['Fecha', 'Demanda']]
+            # df = df[['Fecha', 'Demanda']]
             df['Fecha'] = df['Fecha'].dt.strftime('%d/%m/%Y')
             df = df.set_index('Fecha')
 
@@ -789,6 +800,7 @@ class ThreadedClient(threading.Thread):
     def run(self):
         if self.process == 'Optimizador':
             self.application.get_best_models(self.queue)
+            self.application.evaluate_fit() # todo: temporary
 
 
 if __name__ == '__main__':
