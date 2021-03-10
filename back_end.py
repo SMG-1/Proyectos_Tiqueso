@@ -178,7 +178,7 @@ class ConfigShelf:
 
         shelf = self.open_shelf(False)
 
-        if parameter not in self.config_dict.keys():
+        if parameter not in shelf.keys():
             raise ValueError(f'{parameter} is not a valid parameter.')
 
         if 'model' in kwargs.keys():
@@ -243,13 +243,19 @@ class Application:
         self.periods_fwd = int(self.config_shelf.send_parameter('periods_fwd'))
 
         # feature names for the modelling data
-        self.var_names = ['Demanda', 'Pronóstico']
+        self.var_names = ['Demanda', 'Ajuste', 'Pronóstico']
 
         # dictionary to store fitted models for forecasting
         self.dict_fitted_models = {}
 
         # dictionary to store dataframes with original data, fitted values and OOS forecast
         self.dict_fitted_dfs = {}
+
+        # dictionary to store dataframes with forecast errors
+        self.dict_errors = {}
+
+        # dictionary to store metrics for each model
+        self.dict_metrics = {}
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -391,27 +397,35 @@ class Application:
     def evaluate_fit(self):
         """"""
 
-        # copy dataframe of real vs fitted values to be able to modify it
-        df_eval = copy.deepcopy(self.df_real_vs_fitted)
+        for sku, df in self.dict_fitted_dfs.items():
+            df = copy.deepcopy(df)
 
-        # calculate error
-        df_eval.loc[:, 'Error'] = df_eval['Pronóstico'] - df_eval['Demanda']
+            # error = forecast - demand
+            df.loc[:, 'Error'] = df[self.var_names[1]] - df[self.var_names[0]]
 
-        # calculate absolute error
-        df_eval.loc[:, 'Abs_Error'] = df_eval['Error'].abs()
+            # absolute error = abs(error)
+            df.loc[:, 'Abs_Error'] = df['Error'].abs()
 
-        print('AIC: ', self.fitted_model.aic)
-        print('BIC: ', self.fitted_model.bic)
+            self.dict_errors[sku] = df
 
-        # calculate the mean absolute error
-        mae = df_eval['Abs_Error'].mean()
-        print('MAE: ', mae)
+            # save individual metrics to the metrics dictionary
+            print('AIC: ', self.dict_fitted_models[sku].aic())
+            print('BIC: ', self.dict_fitted_models[sku].bic())
 
-        # calculate the mean percentage absolute error
-        mae_perc = mae / df_eval['Demanda'].mean()
-        print('MAE %: ', mae_perc)
+            # calculate the mean absolute error
+            mae = df['Abs_Error'].mean()
+            print('MAE: ', mae)
 
-        return [self.fitted_model.aic, self.fitted_model.bic, mae, mae_perc]
+            # calculate the mean percentage absolute error
+            mae_perc = mae / df[self.var_names[0]].mean()
+            print('MAE %: ', mae_perc)
+
+            self.dict_metrics[sku] = {'AIC': self.dict_fitted_models[sku].aic(),
+                                      'BIC': self.dict_fitted_models[sku].bic(),
+                                      'MAE': mae,
+                                      'MAE_PERC': mae_perc}
+
+            print(f'Metrics for {sku}: ', self.dict_metrics[sku])
 
     def get_best_models(self, queue_):
 
@@ -430,9 +444,13 @@ class Application:
             results = pm.auto_arima(df.loc[:, 'Demanda'],
                                     out_of_sample_size=20,
                                     stepwise=True)
+            print(results.summary())
 
             # fit the best model to the dataset
             fitted_model = results.fit(df.loc[:, 'Demanda'])
+
+            # save fitted model to dictionary of fitted models
+            self.dict_fitted_models[sku] = fitted_model
 
             # create a dataframe with the real data
             df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
@@ -450,7 +468,7 @@ class Application:
             df_total = pd.concat([df_total, preds], axis=1)
 
             # change column names
-            df_total.columns = ['Demanda', 'Ajuste', 'Pronóstico']
+            df_total.columns = self.var_names
 
             # add the whole dataframe to a dictionary with the product name as the key
             self.dict_fitted_dfs[sku] = df_total
@@ -470,20 +488,18 @@ class Application:
 
         # predict on OOS using the fitted model
         predictions = fitted_model.predict(n_periods=periods_fwd)
-        predictions = pd.DataFrame(predictions, index=pred_index)
-        predictions.columns = [self.var_names[0]]
+        predictions = pd.DataFrame(predictions, index=pred_index, columns=[self.var_names[0]])
 
         return predictions
 
     def refresh_predictions(self):
 
-        if self.dict_fitted_models is None:
+        if self.dict_fitted_models == {}:
             raise NameError('No se tienen modelos entrenados, debe correr el optimizador primero.')
 
         else:
             # get new predictions for each dataset
             for sku, df in self.segmented_data_sets.items():
-
                 # get the product's fitted model
                 model = self.dict_fitted_models[sku]
 
@@ -491,17 +507,18 @@ class Application:
                 total_df_old = self.dict_fitted_dfs[sku]
 
                 # drop old predictions from the fitted dataset
-                total_df_old = total_df_old[total_df_old['Pronóstico'].notnull()]
+                total_df_old = total_df_old.loc[df.index]
+                total_df_old.drop(columns=[self.var_names[2]], inplace=True)
 
                 # get new predictions
                 new_preds = self.predict_fwd(df, model)
 
                 # add new predictions to the old dataset
                 total_df_new = pd.concat([total_df_old, new_preds], axis=1)
+                total_df_new.columns = self.var_names
 
                 # replace the new dataset with the old one on the fitted dataframes dictionary
                 self.dict_fitted_dfs[sku] = total_df_new
-
 
     def export_data(self, path, file_name, extension):
 
