@@ -145,7 +145,8 @@ class Main:
         self.tab_metrics = ttk.Frame(self.notebook_frame)
         self.notebook_frame.add(self.tab_plot, text='Gráfico')
         self.notebook_frame.add(self.tab_metrics, text='Métricas', state='disabled')
-        self.notebook_frame.pack(expand=True, fill="both", side=LEFT)
+        # self.notebook_frame.pack(expand=True, fill="both",  anchor='w')
+        self.notebook_frame.grid(row=0, column=0)
 
         # Frame for plots
         self.frame_plot = LabelFrame(self.tab_plot,
@@ -159,14 +160,13 @@ class Main:
         # Frame for config
         self.frame_config = LabelFrame(self.bottom_frame,
                                        text='Configuración',
-                                       # width=self.config_width,
-                                       width = 500,
+                                       width=self.config_width,
                                        height=self.bottom_frame_height,
                                        # highlightbackground='black',
                                        # highlightthickness=0.5,
                                        bg=bg_color)
-        # self.frame_config.grid(row=1, column=1)
-        self.frame_config.pack(fill='both', expand=True, side=RIGHT)
+        self.frame_config.grid(row=0, column=1)
+        # self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- NIVEL 2 ---
         # label for the combobox
