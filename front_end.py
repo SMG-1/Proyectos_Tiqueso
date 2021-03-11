@@ -737,43 +737,47 @@ class WindowExportFile:
         self.height = height
         self.thread_ = None
 
-        # First frame
-        self.frame_i = Frame(self.master, bg=bg_color)
-        self.frame_i.pack(fill=BOTH, expand=True)
+        # configure columns
+        self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
 
-        # Second frame
-        self.frame_ii = Frame(self.master, bg=bg_color)
-        self.frame_ii.pack(fill=BOTH, expand=True)
-
-        # Third frame
-        self.frame_iii = Frame(self.master, bg=bg_color)
-        self.frame_iii.pack(fill=BOTH, expand=True)
+        # Master frame
+        self.frame_master = Frame(self.master, bg=bg_color, borderwidth=2, width=75, padx=10, pady=10)
+        self.frame_master.pack(fill=BOTH, expand=True)
 
         # label to show selected path
         # first label shows instructions
-        Label(self.frame_i, text='Directorio: ', padx=10, bg=bg_color).pack()
-        self.lbl_path = Label(self.master_frame, text=self.app.file_paths_shelf.send_path('Working'), padx=10, pady=10,
-                              borderwidth=2, width=55, relief="groove", anchor='w', bg=bg_color)
-        self.lbl_path.grid(row=0, column=1)
+        # Label(self.frame_i, text='Directorio: ', padx=10, bg=bg_color).pack(side=LEFT)
+
+        self.btn_path = Button(self.frame_master, text=self.app.file_paths_shelf.send_path('Demand'), bg=bg_color)
+        self.btn_path.grid(row=0, column=0, pady=5, sticky='EW')
+
+        print('width', self.btn_path.winfo_width())
+        print('path:', self.app.file_paths_shelf.send_path('Demand'))
+
+        # self.lbl_path = Label(self.frame_i, text=self.app.file_paths_shelf.send_path('Working'), padx=10, pady=10,
+        #                       borderwidth=2, width=55, relief="groove", anchor='w', bg=bg_color)
+        # self.lbl_path.pack(side=LEFT, fill='both', padx=10, pady=10)
 
         # Entry to change the filename
-        Label(self.master_frame, text='Nombre: ', padx=10, bg=bg_color).grid(row=1, column=0)
-        self.entry_output_file = Entry(self.master, width=30)
+        # Label(self.frame_ii, text='Nombre: ', padx=10, bg=bg_color).pack(side=LEFT)
+
+        self.entry_output_file = Entry(self.frame_master)
         file_name = self.app.config_shelf.send_parameter('File_name')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
-        self.entry_output_file.insert(END, file_name + f'{today_date}')
+        self.entry_output_file.insert(END, file_name + f' {today_date}.xlsx')
+        self.entry_output_file.grid(row=1, column=0, pady=5, sticky='EW')
 
         # Combobox to choose extension
-        Label(self.master_frame, text='Formato: ', padx=10, bg=bg_color).grid(row=1, column=0)
+        # Label(self.frame_iii, text='Formato: ', padx=10, bg=bg_color).pack(side=LEFT)
 
-        exts = ['Excel', 'CSV']
-        self.combobox_extensions = ttk.Combobox(self.master_frame, value=exts)
+        exts = ['Libro de Excel (*.xlsx)', 'CSV UTF-8 (*.csv)']
+        self.combobox_extensions = ttk.Combobox(self.frame_master, value=exts)
         self.combobox_extensions.current(0)
-        self.combobox_extensions.grid(row=1, column=1)
+        self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='EW')
 
         # Button to accept
-        self_btn_accept = Button(self.master_frame, text='Aceptar')
-        self_btn_accept.pack()
+        self_btn_accept = Button(self.frame_master, text='Aceptar', padx=10)
+        self_btn_accept.grid(row=2, column=1)
 
     def spawn_thread(self):
         pass
