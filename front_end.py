@@ -1,3 +1,4 @@
+import copy
 import datetime
 import os
 import queue
@@ -65,10 +66,13 @@ class Main:
 
         #
         self.new_win = None
-        self.figure = None
-        self.ax = None
+        self.figure_data = None
+        self.figure_model = None
+        self.ax_data = None
+        self.ax_model = None
         self.ax_2 = None
-        self.line_plot = None
+        self.data_plot = None
+        self.model_plot = None
         self.pd_table = None
 
         # --- DECLARACION DE DROPDOWN MENU - TOOLBAR ---
@@ -150,20 +154,19 @@ class Main:
 
         # Notebook to alternate between plot and metrics using a tab system
         self.notebook_frame = ttk.Notebook(self.frame_notebook)
-        self.tab_plot = ttk.Frame(self.notebook_frame)
+        self.tab_data_plot = ttk.Frame(self.notebook_frame)
+        self.tab_model_plot = ttk.Frame(self.notebook_frame)
         self.tab_metrics = ttk.Frame(self.notebook_frame)
-        self.notebook_frame.add(self.tab_plot, text='Gráfico')
+        self.notebook_frame.add(self.tab_data_plot, text='Demanda Real')
+        self.notebook_frame.add(self.tab_model_plot, text='Modelo', state='disabled')
         self.notebook_frame.add(self.tab_metrics, text='Métricas', state='disabled')
         self.notebook_frame.pack()
 
-        # Frame for plots
-        self.frame_plot = LabelFrame(self.tab_plot,
-                                     text='Plot',
-                                     width=self.plot_width,
-                                     height=self.bottom_frame_height,
-                                     bg=bg_color)
-        # self.frame_plot.grid(row=1, column=0)
-        # self.frame_plot.pack(fill='both',expand=True, side=LEFT)
+        # Frame for the metrics tab
+        self.metrics_frame = Frame(self.tab_metrics)
+        self.metrics_frame.pack(fill=BOTH, expand=True)
+
+        self.metrics_frame.columnconfigure((0, 1, 2), uniform='equal', weight=1)
 
         # Frame for config
         self.frame_config = LabelFrame(self.bottom_frame,
@@ -176,14 +179,6 @@ class Main:
         self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- NIVEL 2 ---
-        # label for the combobox
-        Label(self.frame_config, text='Datos visibles:', bg=bg_color).pack(padx=10, anchor='w')
-        # Combobox: available models
-        plot_types = ['Datos originales', 'Modelo']
-        self.combobox_plot_type = ttk.Combobox(self.frame_config, value=plot_types)
-        # self.combobox_choose_model.bind("<<ComboboxSelected>>", self.combo_box_callback)
-        self.combobox_plot_type.current(0)
-        self.combobox_plot_type.pack(padx=10, pady=(0, 10), anchor='w')
 
         # label for the combobox
         Label(self.frame_config, text='Nivel de detalle del tiempo:', bg=bg_color).pack(padx=10, anchor='w')
@@ -215,32 +210,41 @@ class Main:
 
     def create_fig(self, df, plot_type):
         # if line plot isn't empty, destroy the widget before adding a new one
-        if self.line_plot is not None:
-            self.line_plot.get_tk_widget().destroy()
 
         # add matplotlib Figure
         dpi = 100
-        self.figure = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
-        self.ax = self.figure.add_subplot(1, 1, 1)
-        self.line_plot = FigureCanvasTkAgg(self.figure, self.tab_plot)
-        self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
+
+        if plot_type == 'Demand':
+            if self.data_plot is not None:
+                self.data_plot.get_tk_widget().destroy()
+
+            # raw data
+            self.figure_data = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
+            self.ax_data = self.figure_data.add_subplot(1, 1, 1)
+            self.data_plot = FigureCanvasTkAgg(self.figure_data, self.tab_data_plot)
+            self.data_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
+
+        else:
+            if self.model_plot is not None:
+                self.model_plot.get_tk_widget().destroy()
+
+            # model
+            self.figure_model = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
+            self.ax_model = self.figure_model.add_subplot(1, 1, 1)
+            self.model_plot = FigureCanvasTkAgg(self.figure_model, self.tab_model_plot)
+            self.model_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         df = df.reset_index()
 
         if plot_type == 'Demand':
-            df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax)
-
-        if plot_type == 'Fitted':
-            # create plot with index as X value, and demand as y value
-            df.plot(x='Fecha', y='Demanda', color='b', ax=self.ax)
-            df.plot(x='Fecha', y='Ajuste', color='r', ax=self.ax)
+            df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax_data)
 
         if plot_type == 'Forecast':
             col_names = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico']
             df.columns = col_names
-            df.plot(x=col_names[0], y=col_names[1], color='b', ax=self.ax)
-            df.plot(x=col_names[0], y=col_names[2], color='r', ax=self.ax)
-            df.plot(x=col_names[0], y=col_names[3], color='g', ax=self.ax)
+            df.plot(x=col_names[0], y=col_names[1], color='b', ax=self.ax_model)
+            df.plot(x=col_names[0], y=col_names[2], color='r', ax=self.ax_model)
+            df.plot(x=col_names[0], y=col_names[3], color='g', ax=self.ax_model)
 
     def show_table(self, df, table_type):
 
@@ -259,7 +263,7 @@ class Main:
             df['Fecha'] = df['Fecha'].dt.strftime('%b-%Y')
             df = df.set_index('Fecha')
 
-        else:
+        elif self.combobox_time_freq.get() == 'Diario':
             df = df.reset_index()
             # df = df[['Fecha', 'Demanda']]
             df['Fecha'] = df['Fecha'].dt.strftime('%d/%m/%Y')
@@ -345,7 +349,10 @@ class Main:
             df = sep_df_dict[sku]
 
         # call function to show table on top frame
-        self.show_table(df, plot_type)
+        if self.back_end.dict_fitted_dfs != {} and plot_type != 'Demand':
+            self.show_table(df, 'Forecast')
+        elif plot_type == 'Demand' and df.columns[0] == 'Codigo':
+            self.show_table(df, 'Demand')
 
         self.create_fig(df, plot_type)
 
@@ -388,7 +395,12 @@ class Main:
             self.new_win.grab_set()
             self.master.wait_window(self.new_win)
 
+            self.notebook_frame.tab(self.tab_model_plot, state='normal')
+
             self.show_plot_and_table('DEFAULT', 'Forecast', 0)
+
+            # enable the metrics tab
+            self.update_metrics('DEFAULT')
 
             # self.periodic_call(process, thread, queue_)
 
@@ -439,12 +451,35 @@ class Main:
         except IndexError:
             item_name = 'DEFAULT'
 
-        # update the plot and table using the original data or the forecast, depending on the combobox selection
-        if self.combobox_plot_type.get() == 'Datos originales':
-            self.show_plot_and_table(item_name, 'Demand', event)
+        self.show_plot_and_table(item_name, 'Demand', event)
 
-        else:
+        if self.back_end.dict_fitted_dfs != {}:
             self.show_plot_and_table(item_name, 'Forecast', event)
+            self.update_metrics(item_name)
+
+
+    def update_metrics(self, sku):
+
+        self.notebook_frame.tab(self.tab_metrics, state='normal')
+
+        sep_df_dict = self.back_end.dict_fitted_dfs
+
+        if sku == 'DEFAULT':
+            sku = list(sep_df_dict.keys())[0]
+
+        metrics_dict = self.back_end.dict_metrics[sku]
+
+        for idx, (metric, value) in enumerate(metrics_dict.items()):
+            Label(self.metrics_frame, text=metric, padx=10).grid(row=idx, column=0, padx=10, pady=5)
+
+            rounded_val = round(float(value), 2)
+            Label(self.metrics_frame, text=rounded_val, padx=10).grid(row=idx, column=1, padx=10, pady=5)
+
+            metric_desc = self.back_end.dict_metric_desc[metric]
+            Label(self.metrics_frame, text=metric_desc, padx=10, wraplength=250).grid(row=idx,
+                                                                                      column=2,
+                                                                                      padx=10,
+                                                                                      pady=5)
 
 
 class WindowSelectWorkPath:
@@ -744,40 +779,35 @@ class WindowExportFile:
         self.frame_master = Frame(self.master, bg=bg_color, borderwidth=2, width=75, padx=10, pady=10)
         self.frame_master.pack(fill=BOTH, expand=True)
 
-        # label to show selected path
-        # first label shows instructions
-        # Label(self.frame_i, text='Directorio: ', padx=10, bg=bg_color).pack(side=LEFT)
-
-        self.btn_path = Button(self.frame_master, text=self.app.file_paths_shelf.send_path('Demand'), bg=bg_color)
-        self.btn_path.grid(row=0, column=0, pady=5, sticky='EW')
-
-        print('width', self.btn_path.winfo_width())
-        print('path:', self.app.file_paths_shelf.send_path('Demand'))
-
-        # self.lbl_path = Label(self.frame_i, text=self.app.file_paths_shelf.send_path('Working'), padx=10, pady=10,
-        #                       borderwidth=2, width=55, relief="groove", anchor='w', bg=bg_color)
-        # self.lbl_path.pack(side=LEFT, fill='both', padx=10, pady=10)
-
-        # Entry to change the filename
-        # Label(self.frame_ii, text='Nombre: ', padx=10, bg=bg_color).pack(side=LEFT)
+        # Button to change the path
+        self.btn_path = Button(self.frame_master,
+                               text=self.app.file_paths_shelf.send_path('Demand'),
+                               bg=bg_color,
+                               width=100,
+                               command=self.browse_files)
+        self.btn_path.grid(row=0, column=0, pady=5, sticky='WE')
 
         self.entry_output_file = Entry(self.frame_master)
         file_name = self.app.config_shelf.send_parameter('File_name')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
-        self.entry_output_file.insert(END, file_name + f' {today_date}.xlsx')
-        self.entry_output_file.grid(row=1, column=0, pady=5, sticky='EW')
+        self.entry_output_file.insert(END, file_name + f' {today_date}')
+        self.entry_output_file.grid(row=1, column=0, pady=5, sticky='WE')
 
         # Combobox to choose extension
-        # Label(self.frame_iii, text='Formato: ', padx=10, bg=bg_color).pack(side=LEFT)
-
-        exts = ['Libro de Excel (*.xlsx)', 'CSV UTF-8 (*.csv)']
-        self.combobox_extensions = ttk.Combobox(self.frame_master, value=exts)
+        #  exts = [('Libro de Excel (*.xlsx)', '.xlsx'), ('CSV UTF-8 (*.csv)', '.csv')]
+        self.exts = {'Libro de Excel (*.xlsx)': '.xlsx',
+                     'CSV UTF-8 (*.csv)': '.csv'}
+        self.combobox_extensions = ttk.Combobox(self.frame_master, value=list(self.exts.keys()))
         self.combobox_extensions.current(0)
-        self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='EW')
+        self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='WE')
 
         # Button to accept
-        self_btn_accept = Button(self.frame_master, text='Aceptar', padx=10)
-        self_btn_accept.grid(row=2, column=1)
+        self_btn_accept = Button(self.frame_master, text='Guardar', padx=10, command=self.call_backend_export)
+        self_btn_accept.grid(row=2, column=1, padx=10)
+
+    def call_backend_export(self):
+        ext_ = self.exts[self.combobox_extensions.get()]
+        self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_)
 
     def spawn_thread(self):
         pass
@@ -806,12 +836,12 @@ class WindowExportFile:
     def close_window(self):
         self.master.destroy()
 
-    def browseFiles(self):
+    def browse_files(self):
         filename = filedialog.askdirectory(initialdir=self.app.file_paths_shelf.send_path('Working'),
                                            title="Seleccione un folder de destino.")
 
         # Change label contents
-        self.lbl_path.configure(text=filename)
+        self.btn_path.configure(text=filename)
 
 
 class ThreadedClient(threading.Thread):
