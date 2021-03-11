@@ -139,14 +139,22 @@ class Main:
                                  bg=bg_color)
         self.frame_table.pack(fill='x', expand=True, anchor='n')
 
+        # Frame for notebook
+        self.frame_notebook = Frame(self.bottom_frame,
+                                    width=self.plot_width,
+                                    height=self.bottom_frame_height,
+                                    # highlightbackground='black',
+                                    # highlightthickness=0.5,
+                                    bg=bg_color)
+        self.frame_notebook.pack(fill='both', expand=True, side=LEFT)
+
         # Notebook to alternate between plot and metrics using a tab system
-        self.notebook_frame = ttk.Notebook(self.bottom_frame)
+        self.notebook_frame = ttk.Notebook(self.frame_notebook)
         self.tab_plot = ttk.Frame(self.notebook_frame)
         self.tab_metrics = ttk.Frame(self.notebook_frame)
         self.notebook_frame.add(self.tab_plot, text='Gráfico')
         self.notebook_frame.add(self.tab_metrics, text='Métricas', state='disabled')
-        # self.notebook_frame.pack(expand=True, fill="both",  anchor='w')
-        self.notebook_frame.grid(row=0, column=0)
+        self.notebook_frame.pack()
 
         # Frame for plots
         self.frame_plot = LabelFrame(self.tab_plot,
@@ -165,8 +173,7 @@ class Main:
                                        # highlightbackground='black',
                                        # highlightthickness=0.5,
                                        bg=bg_color)
-        self.frame_config.grid(row=0, column=1)
-        # self.frame_config.pack(fill='both', expand=True, side=RIGHT)
+        self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- NIVEL 2 ---
         # label for the combobox
@@ -213,7 +220,7 @@ class Main:
 
         # add matplotlib Figure
         dpi = 100
-        self.figure = Figure(figsize=(1800 / dpi, self.bottom_frame_height / dpi), dpi=dpi)
+        self.figure = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
         self.ax = self.figure.add_subplot(1, 1, 1)
         self.line_plot = FigureCanvasTkAgg(self.figure, self.tab_plot)
         self.line_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
@@ -730,29 +737,43 @@ class WindowExportFile:
         self.height = height
         self.thread_ = None
 
+        # First frame
+        self.frame_i = Frame(self.master, bg=bg_color)
+        self.frame_i.pack(fill=BOTH, expand=True)
+
+        # Second frame
+        self.frame_ii = Frame(self.master, bg=bg_color)
+        self.frame_ii.pack(fill=BOTH, expand=True)
+
+        # Third frame
+        self.frame_iii = Frame(self.master, bg=bg_color)
+        self.frame_iii.pack(fill=BOTH, expand=True)
+
         # label to show selected path
         # first label shows instructions
-        Label(self.master, text='Directorio: ', padx=10, bg=bg_color).grid(row=0, column=0)
-        self.lbl_path = Label(self.master, text=self.app.file_paths_shelf.send_path('Working'), padx=10, pady=10,
+        Label(self.frame_i, text='Directorio: ', padx=10, bg=bg_color).pack()
+        self.lbl_path = Label(self.master_frame, text=self.app.file_paths_shelf.send_path('Working'), padx=10, pady=10,
                               borderwidth=2, width=55, relief="groove", anchor='w', bg=bg_color)
         self.lbl_path.grid(row=0, column=1)
 
         # Entry to change the filename
-        Label(self.master, text='Nombre: ', padx=10, bg=bg_color).grid(row=1, column=0)
+        Label(self.master_frame, text='Nombre: ', padx=10, bg=bg_color).grid(row=1, column=0)
         self.entry_output_file = Entry(self.master, width=30)
         file_name = self.app.config_shelf.send_parameter('File_name')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
         self.entry_output_file.insert(END, file_name + f'{today_date}')
 
         # Combobox to choose extension
-        Label(self.master, text='Formato: ', padx=10, bg=bg_color).grid(row=1, column=0)
+        Label(self.master_frame, text='Formato: ', padx=10, bg=bg_color).grid(row=1, column=0)
+
         exts = ['Excel', 'CSV']
-        self.combobox_extensions = ttk.Combobox(self.master, value=exts)
+        self.combobox_extensions = ttk.Combobox(self.master_frame, value=exts)
         self.combobox_extensions.current(0)
-        self.combobox_extensions.pack(padx=10, anchor='w')
+        self.combobox_extensions.grid(row=1, column=1)
 
         # Button to accept
-        self_btn_accept = Button(self.master, text='Aceptar')
+        self_btn_accept = Button(self.master_frame, text='Aceptar')
+        self_btn_accept.pack()
 
     def spawn_thread(self):
         pass
@@ -800,7 +821,7 @@ class ThreadedClient(threading.Thread):
     def run(self):
         if self.process == 'Optimizador':
             self.application.get_best_models(self.queue)
-            self.application.evaluate_fit() # todo: temporary
+            self.application.evaluate_fit()  # todo: temporary
 
 
 if __name__ == '__main__':
