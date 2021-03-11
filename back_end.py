@@ -257,6 +257,23 @@ class Application:
         # dictionary to store metrics for each model
         self.dict_metrics = {}
 
+        # dictionary for metric descriptions
+
+        self.dict_metric_desc = {'AIC': 'Criterio de información de Akaike',
+                                 'BIC': 'Criterio de información Bayesiano',
+                                 'Bias': 'Promedio del error: Un valor positivo indica una sobreestimación de la '
+                                         'demanda y viceversa.',
+                                 'MAE': 'Promedio del error absoluto: Indica el valor promedio del error en la unidad'
+                                        'de medida de los datos de entrada.',
+                                 'MAE_PERC': 'MAE Porcentual: indica el error promedio como proporción de la '
+                                             'demanda promedio.',
+                                 'MSE': 'Promedio del error cuadrático: indica el valor promedio del error elevado '
+                                        'al cuadrado.',
+                                 'RMSE': 'Raíz del error cuadrático: indica la raíz de MSE en la unidad de medida '
+                                         'de los datos de entrada.',
+                                 'RMSE_PERC': 'RMSE Porcentual: Indica el RMSE como proporción de la '
+                                             'demanda promedio.'}
+
     def setup(self):
         if not os.path.exists(self.path_):
             print('Instalando el programa.')
@@ -406,11 +423,18 @@ class Application:
             # absolute error = abs(error)
             df.loc[:, 'Abs_Error'] = df['Error'].abs()
 
+            # squared error
+            df.loc[:, 'Squared_Error'] = df['Error'] ** 2
+
             self.dict_errors[sku] = df
 
             # save individual metrics to the metrics dictionary
             print('AIC: ', self.dict_fitted_models[sku].aic())
             print('BIC: ', self.dict_fitted_models[sku].bic())
+
+            # calculate the bias
+            bias = df['Error'].mean()
+            print('Bias:', bias)
 
             # calculate the mean absolute error
             mae = df['Abs_Error'].mean()
@@ -420,10 +444,23 @@ class Application:
             mae_perc = mae / df[self.var_names[0]].mean()
             print('MAE %: ', mae_perc)
 
+            # calculate the mean squared error
+            mse = df['Squared_Error'].mean()
+
+            # calculate the rmse
+            rmse = mse ** (1 / 2)
+
+            # calculate the rmse percentage
+            rmse_perc = rmse / df[self.var_names[0]].mean()
+
             self.dict_metrics[sku] = {'AIC': self.dict_fitted_models[sku].aic(),
                                       'BIC': self.dict_fitted_models[sku].bic(),
+                                      'Bias': bias,
                                       'MAE': mae,
-                                      'MAE_PERC': mae_perc}
+                                      'MAE_PERC': mae_perc,
+                                      'MSE': mse,
+                                      'RMSE': rmse,
+                                      'RMSE_PERC': rmse_perc}
 
             print(f'Metrics for {sku}: ', self.dict_metrics[sku])
 
@@ -522,6 +559,7 @@ class Application:
 
     def export_data(self, path, file_name, extension):
 
+        print('Exportando.')
         file_name = file_name + extension
 
         df_export = pd.DataFrame()
