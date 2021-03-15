@@ -228,6 +228,9 @@ class Application:
         # available forecasting models
         self.models = {'SARIMAX': 'ARIMA'}
 
+        # product dictionary
+        self.product_dict = {}
+
         # MODEL ATTRIBUTES
 
         # model chosen by the user
@@ -383,11 +386,18 @@ class Application:
         # create copy to be able to modify the dataset
         df = copy.deepcopy(self.raw_data)
 
-        unique_combinations = [uni for uni in df.loc[:, var_name].unique()]
+        # get all the unique product codes
+        unique_codes = [code for code in df.loc[:, 'Codigo'].unique()]
+
+        # get all the unique products
+        unique_products = [uni for uni in df.loc[:, var_name].unique()]
+
+        # create a dictionary of codes and product names
+        self.product_dict = dict(zip(unique_products, unique_codes))
         df_list = []
 
         # for all the unique var_name values, get the filtered dataframe and add to list
-        for unique in unique_combinations:
+        for unique in unique_products:
             df_ = df[df[var_name] == unique]
 
             # fill missing dates with 0
@@ -402,11 +412,11 @@ class Application:
         grouped_df = grouped_df.set_index('Fecha')
 
         # append grouped df to list, and label as Total
-        unique_combinations.append('Total')
+        unique_products.append('Total')
         df_list.append(grouped_df)
 
         # create dictionary from zipped lists
-        data_sets_dict = dict(zip(unique_combinations, df_list))
+        data_sets_dict = dict(zip(unique_products, df_list))
 
         # assign the dictionary to class attribute
         self.segmented_data_sets = data_sets_dict
@@ -562,9 +572,19 @@ class Application:
         print('Exportando.')
         file_name = file_name + extension
 
+        col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
+
         df_export = pd.DataFrame()
         for sku, df in self.dict_fitted_dfs.items():
+            # skip totals
+            if sku == 'Total':
+                pass
+
             df = df.reset_index()
+            df['Codigo'] = self.product_dict[sku]
+            df['Nombre'] = sku
+            df = df[df['Pronóstico'].notnull()]
+            df = df[[col_order]]
             df_export = pd.concat([df_export, df], axis=0)
 
         if extension == '.xlsx':
