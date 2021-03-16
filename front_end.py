@@ -103,6 +103,34 @@ class Main:
         self.master.config(menu=main_menu)
 
         # ---NIVEL 0 ---
+        self.button_control_frame = LabelFrame(self.master, bg=bg_color)
+        self.button_control_frame.pack(fill=X)
+
+        self.img_new = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\new.png")
+        self.btn_new = Button(self.button_control_frame, text='Nuevo', image=self.img_new, compound='left',
+                              bg=bg_color, width=75, padx=10)
+        self.btn_new.pack(side=LEFT)
+
+        self.img_open = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\open.png")
+        self.btn_open = Button(self.button_control_frame, text='Abrir', image=self.img_open, compound='left',
+                              bg=bg_color, width=75, padx=10)
+        self.btn_open.pack(side=LEFT)
+
+        self.img_save = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\save.png")
+        self.btn_save = Button(self.button_control_frame, text='Guardar', image=self.img_save, compound='left',
+                               bg=bg_color, width=75, padx=10)
+        self.btn_save.pack(side=LEFT)
+
+        self.img_refresh = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\refresh.png")
+        self.btn_refresh = Button(self.button_control_frame, text='Refrescar', image=self.img_refresh, compound='left',
+                               bg=bg_color, width=75, padx=10)
+        self.btn_refresh.pack(side=LEFT)
+
+        self.img_run = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\run.png")
+        self.btn_run = Button(self.button_control_frame, text='Ejecutar', image=self.img_run, compound='left',
+                                  bg=bg_color, width=75, padx=10)
+        self.btn_run.pack(side=LEFT)
+
         self.main_paned = PanedWindow(self.master,
                                       width=self.width,
                                       height=self.height,
@@ -390,8 +418,8 @@ class Main:
             thread.start()
 
             self.new_win = Toplevel(self.master)
-            WindowTraining(self.new_win, self.back_end, queue_, thread, 540,
-                           300)
+            WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
+                           self.screen_height)
             self.new_win.grab_set()
             self.master.wait_window(self.new_win)
 
@@ -807,7 +835,13 @@ class WindowExportFile:
 
     def call_backend_export(self):
         ext_ = self.exts[self.combobox_extensions.get()]
-        self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_)
+        try:
+            self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_)
+        except ValueError:
+            new_win = Toplevel(self.master)
+            WindowPopUpMessage(new_win, 'Advertencia', 'Debe ejecutar el pronóstico antes'
+                                                           ' de exportar la información.',
+                               self.width, self.height)
 
     def spawn_thread(self):
         pass
