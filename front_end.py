@@ -214,6 +214,7 @@ class Main:
         freqs_ = ['Diario', 'Semanal', 'Mensual']
         self.combobox_time_freq = ttk.Combobox(self.frame_config, value=freqs_)
         self.combobox_time_freq.current(0)
+        self.combobox_time_freq.bind("<<ComboboxSelected>>", self.refresh_views)
         self.combobox_time_freq.pack(padx=10, pady=(0, 10), anchor='w')
 
         # label for the entry
