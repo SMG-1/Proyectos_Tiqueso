@@ -537,6 +537,9 @@ class Application:
         predictions = fitted_model.predict(n_periods=periods_fwd)
         predictions = pd.DataFrame(predictions, index=pred_index, columns=[self.var_names[0]])
 
+        # allow only non-negative predictions
+        predictions.loc[predictions[self.var_names[0]] < 0, self.var_names[0]] = 0
+
         return predictions
 
     def refresh_predictions(self):
@@ -574,17 +577,29 @@ class Application:
 
         col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
 
+        # check if model ran
+        if self.dict_fitted_dfs == {}:
+            raise ValueError('The model has to be trained first.')
+
         df_export = pd.DataFrame()
         for sku, df in self.dict_fitted_dfs.items():
+
             # skip totals
             if sku == 'Total':
-                pass
+                continue
 
-            df = df.reset_index()
             df['Codigo'] = self.product_dict[sku]
             df['Nombre'] = sku
+
+            # keep only rows with the forecast, drop original data
+            df = df.reset_index()
             df = df[df['Pronóstico'].notnull()]
-            df = df[[col_order]]
+            df = df.iloc[1:, :]
+
+            # format date
+            df['Fecha'] = df['Fecha'].dt.date
+
+            df = df[col_order]
             df_export = pd.concat([df_export, df], axis=0)
 
         if extension == '.xlsx':
