@@ -520,7 +520,7 @@ class Application:
             # add the whole dataframe to a dictionary with the product name as the key
             self.dict_fitted_dfs[sku] = df_total
 
-            queue_.put([f'Modelo para {sku} listo.', idx / num_keys])
+            queue_.put([f'Modelo para {sku} listo.\n', idx / num_keys])
 
         queue_.put(['Listo', 1])
 
