@@ -106,27 +106,27 @@ class Main:
         self.button_control_frame = LabelFrame(self.master, bg=bg_color)
         self.button_control_frame.pack(fill=X)
 
-        self.img_new = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\new.png")
+        self.img_new = PhotoImage(file=r"C:\icons\new.png")
         self.btn_new = Button(self.button_control_frame, text='Nuevo', image=self.img_new, compound='left',
                               bg=bg_color, width=75, padx=10)
         self.btn_new.pack(side=LEFT)
 
-        self.img_open = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\open.png")
+        self.img_open = PhotoImage(file=r"C:\icons\open.png")
         self.btn_open = Button(self.button_control_frame, text='Abrir', image=self.img_open, compound='left',
                                bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
         self.btn_open.pack(side=LEFT)
 
-        self.img_save = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\save.png")
+        self.img_save = PhotoImage(file=r"C:\icons\save.png")
         self.btn_save = Button(self.button_control_frame, text='Guardar', image=self.img_save, compound='left',
                                bg=bg_color, width=75, padx=10, command=self.open_window_export)
         self.btn_save.pack(side=LEFT)
 
-        self.img_refresh = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\refresh.png")
+        self.img_refresh = PhotoImage(file=r"C:\icons\refresh.png")
         self.btn_refresh = Button(self.button_control_frame, text='Refrescar', image=self.img_refresh, compound='left',
-                                  bg=bg_color, width=75, padx=10)
+                                  bg=bg_color, width=75, padx=10, command=lambda: self.refresh_views(0))
         self.btn_refresh.pack(side=LEFT)
 
-        self.img_run = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\run.png")
+        self.img_run = PhotoImage(file=r"C:\icons\run.png")
         self.btn_run = Button(self.button_control_frame, text='Ejecutar', image=self.img_run, compound='left',
                               bg=bg_color, width=75, padx=10, command=self.run_optimizer)
         self.btn_run.pack(side=LEFT)
@@ -835,8 +835,9 @@ class WindowExportFile:
         self.frame_master.pack(fill=BOTH, expand=True)
 
         # Button to change the path
+        abs_path = os.path.dirname(os.path.abspath(self.app.file_paths_shelf.send_path('Demand')))
         self.btn_path = Button(self.frame_master,
-                               text=self.app.file_paths_shelf.send_path('Demand'),
+                               text=abs_path,
                                bg=bg_color,
                                width=100,
                                command=self.browse_files)
@@ -864,11 +865,29 @@ class WindowExportFile:
         ext_ = self.exts[self.combobox_extensions.get()]
         try:
             self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_)
+            new_win = Toplevel(self.master)
+            WindowPopUpMessage(new_win, 'Mensaje', 'Archivo exportado.', self.width, self.height)
+            new_win.grab_set()
+            self.master.wait_window(new_win)
+
         except ValueError:
             new_win = Toplevel(self.master)
             WindowPopUpMessage(new_win, 'Advertencia', 'Debe ejecutar el pronóstico antes'
                                                        ' de exportar la información.',
                                self.width, self.height)
+            new_win.grab_set()
+            self.master.wait_window(new_win)
+
+
+    def open_window_popup(self):
+        """Open TopLevel to select path where the input files are located."""
+
+        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
+        # this window is closed
+        self.new_win = Toplevel(self.master)
+        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
     def spawn_thread(self):
         pass
