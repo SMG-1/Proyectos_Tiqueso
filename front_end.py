@@ -113,23 +113,34 @@ class Main:
 
         self.img_open = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\open.png")
         self.btn_open = Button(self.button_control_frame, text='Abrir', image=self.img_open, compound='left',
-                              bg=bg_color, width=75, padx=10)
+                               bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
         self.btn_open.pack(side=LEFT)
 
         self.img_save = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\save.png")
         self.btn_save = Button(self.button_control_frame, text='Guardar', image=self.img_save, compound='left',
-                               bg=bg_color, width=75, padx=10)
+                               bg=bg_color, width=75, padx=10, command=self.open_window_export)
         self.btn_save.pack(side=LEFT)
 
         self.img_refresh = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\refresh.png")
         self.btn_refresh = Button(self.button_control_frame, text='Refrescar', image=self.img_refresh, compound='left',
-                               bg=bg_color, width=75, padx=10)
+                                  bg=bg_color, width=75, padx=10)
         self.btn_refresh.pack(side=LEFT)
 
         self.img_run = PhotoImage(file=r"C:\Users\Usuario\Downloads\icons\run.png")
         self.btn_run = Button(self.button_control_frame, text='Ejecutar', image=self.img_run, compound='left',
-                                  bg=bg_color, width=75, padx=10)
+                              bg=bg_color, width=75, padx=10, command=self.run_optimizer)
         self.btn_run.pack(side=LEFT)
+
+        self.lbl_horizon = Label(self.button_control_frame, text='Horizonte:', bg=bg_color)
+        self.lbl_horizon.pack(side=LEFT, padx=(10,0))
+
+        saved_periods_fwd = self.back_end.config_shelf.send_parameter('periods_fwd')
+        var = DoubleVar(value=int(saved_periods_fwd))
+        self.spinbox_periods = Spinbox(self.button_control_frame, from_=0, to=500, textvariable=var)
+        self.spinbox_periods.pack(side=LEFT)
+
+        self.lbl_days = Label(self.button_control_frame, text='días',  bg=bg_color)
+        self.lbl_days.pack(side=LEFT)
 
         self.main_paned = PanedWindow(self.master,
                                       width=self.width,
@@ -387,6 +398,10 @@ class Main:
 
     def run_optimizer(self):
 
+        new_periods_fwd = int(self.spinbox_periods.get())
+        if new_periods_fwd != self.back_end.config_shelf.send_parameter('periods_fwd'):
+            self.back_end.config_shelf.write_to_shelf('periods_fwd', new_periods_fwd)
+
         self.spawn_thread('Optimizador')
 
     def open_window_select_work_path(self):
@@ -419,6 +434,7 @@ class Main:
             thread.start()
 
             self.new_win = Toplevel(self.master)
+            self.new_win.overrideredirect(1) # todo> temporary
             WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
                            self.screen_height)
             self.new_win.grab_set()
@@ -464,7 +480,10 @@ class Main:
 
     def refresh_views(self, event):
 
-        new_periods_fwd = int(self.entry_periods_fwd.get())
+        # new_periods_fwd = int(self.entry_periods_fwd.get())
+
+        new_periods_fwd = int(self.spinbox_periods.get())
+
         if new_periods_fwd != self.back_end.config_shelf.send_parameter('periods_fwd'):
             print('Old: ', type(self.back_end.config_shelf.send_parameter('periods_fwd')))
             print('New: ', type(new_periods_fwd))
@@ -485,7 +504,6 @@ class Main:
         if self.back_end.dict_fitted_dfs != {}:
             self.show_plot_and_table(item_name, 'Forecast', event)
             self.update_metrics(item_name)
-
 
     def update_metrics(self, sku):
 
@@ -532,8 +550,11 @@ class WindowSelectWorkPath:
                                      width=screen_width_ / 5,
                                      padx=10,
                                      pady=10)
-        self.main_frame.pack(padx=10,
-                             pady=10)
+        self.main_frame.grid(padx=10,
+                             pady=10,
+                             row=0,
+                             column=0,
+                             columnspan=2)
 
         # --- NIVEL 1 ---
 
@@ -563,7 +584,12 @@ class WindowSelectWorkPath:
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
                                  command=self.save_path_to_shelf)
-        self.btn_accept.pack(pady=10)
+        self.btn_accept.grid(pady=10, row=1, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=self.close_window)
+        self.btn_cancel.grid(pady=10, row=1, column=1)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
@@ -841,7 +867,7 @@ class WindowExportFile:
         except ValueError:
             new_win = Toplevel(self.master)
             WindowPopUpMessage(new_win, 'Advertencia', 'Debe ejecutar el pronóstico antes'
-                                                           ' de exportar la información.',
+                                                       ' de exportar la información.',
                                self.width, self.height)
 
     def spawn_thread(self):
