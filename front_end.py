@@ -46,25 +46,29 @@ class Main:
         self.width = self.screen_width
         self.height = self.screen_height - 100
 
+        # top and bottom frame heights
         self.top_frame_height = int(self.height / 2.5)
         self.bottom_frame_height = self.height - self.top_frame_height
 
+        # treeview and table widths
         self.tree_width = int(self.width * 0.2)
         print(self.tree_width)
         self.table_width = int(self.width * 0.8)
         print(self.table_width)
 
+        # bottom frame widths
         self.plot_width = int(self.width * 0.6)
         print(self.plot_width)
         self.config_width = int(self.width * 0.2)
         print(self.config_width)
 
+        # master geometry, width and height definition
         self.master.geometry('%dx%d+0+0' % (self.width, self.height))
 
         # application instance
         self.back_end = Application(root_path)
 
-        #
+        # initializing parameters
         self.new_win = None
         self.figure_data = None
         self.figure_model = None
@@ -75,7 +79,7 @@ class Main:
         self.model_plot = None
         self.pd_table = None
 
-        # --- DECLARACION DE DROPDOWN MENU - TOOLBAR ---
+        # --- DROPDOWN MENU DECLARATION - TOOLBAR ---
         main_menu = Menu(self.master)
 
         # sub menu declarations
@@ -254,21 +258,16 @@ class Main:
         # add matplotlib Figure
         dpi = 100
 
-        if plot_type == 'Demand':
-            if self.data_plot is not None:
-                self.data_plot.get_tk_widget().destroy()
+        if self.data_plot is not None:
+            self.data_plot.get_tk_widget().destroy()
 
-            # raw data
+        if plot_type == 'Demand':
             self.figure_data = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
             self.ax_data = self.figure_data.add_subplot(1, 1, 1)
             self.data_plot = FigureCanvasTkAgg(self.figure_data, self.tab_data_plot)
             self.data_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         else:
-            if self.model_plot is not None:
-                self.model_plot.get_tk_widget().destroy()
-
-            # model
             self.figure_model = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
             self.ax_model = self.figure_model.add_subplot(1, 1, 1)
             self.model_plot = FigureCanvasTkAgg(self.figure_model, self.tab_model_plot)
@@ -317,8 +316,6 @@ class Main:
 
         if self.pd_table is not None:
             print('Redrawing.')
-            # self.frame_table.pack_forget()
-            # self.frame_table.pack(fill='x', expand=True, anchor='n')
 
         self.pd_table = pandastable.Table(self.frame_table,
                                           dataframe=df,
@@ -479,8 +476,6 @@ class Main:
                 pass
 
     def refresh_views(self, event):
-
-        # new_periods_fwd = int(self.entry_periods_fwd.get())
 
         new_periods_fwd = int(self.spinbox_periods.get())
 
