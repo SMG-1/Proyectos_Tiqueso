@@ -1,21 +1,20 @@
-import copy
 import datetime
 import os
 import queue
 import threading
-import pandas as pd
 from tkinter import *
-from tkinter import ttk
 from tkinter import filedialog
+from tkinter import ttk
+
+import pandas as pd
+import pandastable
+from matplotlib import pyplot as plt
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg)
+from matplotlib.figure import Figure
+from win32api import GetSystemMetrics
+
 from back_end import Application
 from back_end import ConfigShelf
-from matplotlib.figure import Figure
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg,
-                                               NavigationToolbar2Tk)
-from matplotlib import pyplot as plt
-import time
-from win32api import GetSystemMetrics
-import pandastable
 
 plt.style.use('ggplot')
 
@@ -136,14 +135,14 @@ class Main:
         self.btn_run.pack(side=LEFT)
 
         self.lbl_horizon = Label(self.button_control_frame, text='Horizonte:', bg=bg_color)
-        self.lbl_horizon.pack(side=LEFT, padx=(10,0))
+        self.lbl_horizon.pack(side=LEFT, padx=(10, 0))
 
         saved_periods_fwd = self.back_end.config_shelf.send_parameter('periods_fwd')
         var = DoubleVar(value=int(saved_periods_fwd))
         self.spinbox_periods = Spinbox(self.button_control_frame, from_=0, to=500, textvariable=var)
         self.spinbox_periods.pack(side=LEFT)
 
-        self.lbl_days = Label(self.button_control_frame, text='días',  bg=bg_color)
+        self.lbl_days = Label(self.button_control_frame, text='días', bg=bg_color)
         self.lbl_days.pack(side=LEFT)
 
         self.main_paned = PanedWindow(self.master,
@@ -258,16 +257,19 @@ class Main:
         # add matplotlib Figure
         dpi = 100
 
-        if self.data_plot is not None:
-            self.data_plot.get_tk_widget().destroy()
-
         if plot_type == 'Demand':
+            if self.data_plot is not None:
+                self.data_plot.get_tk_widget().destroy()
+
             self.figure_data = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
             self.ax_data = self.figure_data.add_subplot(1, 1, 1)
             self.data_plot = FigureCanvasTkAgg(self.figure_data, self.tab_data_plot)
             self.data_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         else:
+            if self.model_plot is not None:
+                self.model_plot.get_tk_widget().destroy()
+
             self.figure_model = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
             self.ax_model = self.figure_model.add_subplot(1, 1, 1)
             self.model_plot = FigureCanvasTkAgg(self.figure_model, self.tab_model_plot)
@@ -352,7 +354,7 @@ class Main:
             # call function to update the plot and the table on the GUI
             self.show_plot_and_table('DEFAULT', 'Demand', 0)
 
-        except ValueError:
+        except KeyError:
             # temporary label in table frame
             Label(self.frame_table,
                   text='Cargar un archivo para ver información aquí.',
@@ -431,7 +433,7 @@ class Main:
             thread.start()
 
             self.new_win = Toplevel(self.master)
-            self.new_win.overrideredirect(1) # todo> temporary
+            self.new_win.overrideredirect(1)  # todo> temporary
             WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
                            self.screen_height)
             self.new_win.grab_set()
@@ -551,9 +553,19 @@ class WindowSelectWorkPath:
                              column=0,
                              columnspan=2)
 
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=self.save_selection)
+        self.btn_accept.grid(pady=10, row=1, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=self.close_window)
+        self.btn_cancel.grid(pady=10, row=1, column=1)
+
         # --- NIVEL 1 ---
 
-        # Label title
+        #  Label for naming
         self.lbl_name_path = Label(self.main_frame,
                                    text='Directorio:',
                                    bg=bg_color,
@@ -566,32 +578,40 @@ class WindowSelectWorkPath:
                               bg=bg_color,
                               pady=10,
                               borderwidth=2,
-                              width=55,
+                              width=150,
                               relief="groove",
                               anchor=W)
         self.lbl_path.grid(row=0, column=1, padx=10, pady=10)
 
         self.btn_browse = Button(self.main_frame,
                                  text='...',
-                                 command=self.browse_files)
+                                 command=lambda: self.browse_files('Demand'))
         self.btn_browse.grid(row=0, column=2)
 
-        self.btn_accept = Button(self.master,
-                                 text='Aceptar',
-                                 command=self.save_path_to_shelf)
-        self.btn_accept.grid(pady=10, row=1, column=0)
+        # Label for naming
+        self.lbl_name_checkbtn = Label(self.main_frame,
+                                       text='Aplicar recetas?',
+                                       bg=bg_color,
+                                       padx=5)
+        self.lbl_name_checkbtn.grid(row=1, column=0)
 
-        self.btn_cancel = Button(self.master,
-                                 text='Cancelar',
-                                 command=self.close_window)
-        self.btn_cancel.grid(pady=10, row=1, column=1)
+        # Checkbutton to control the BOM Explosion parameter
+        self.cb_bom_state = IntVar()
+        self.cb_bom = Checkbutton(self.main_frame, variable=self.cb_bom_state, bg='white',
+                                  command=self.cb_callback)
+        if self.app.config_shelf.send_parameter('BOM_Explosion'):
+            self.cb_bom.select()
+            self.add_bom_labels_to_grid()
+        else:
+            self.cb_bom.deselect()
+        self.cb_bom.grid(row=1, column=1)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
     def close_window(self):
         self.master.destroy()
 
-    def browse_files(self):
+    def browse_files(self, label_name):
         filename = filedialog.askopenfilename(initialdir="/",
                                               title="Seleccione un archivo",
                                               filetypes=(("Archivo de Excel",
@@ -599,21 +619,76 @@ class WindowSelectWorkPath:
                                                          ("Archivo CSV",
                                                           "*.csv*")))
 
-        # Change label contents
-        self.lbl_path.configure(text=filename)
+        if label_name == 'Demand':
+            # Change label contents
+            self.lbl_path.configure(text=filename)
 
-    def save_path_to_shelf(self):
+        elif label_name == 'BOM':
+            self.lbl_path_bom.configure(text=filename)
+
+    def save_selection(self):
+
+        if self.lbl_path['text'] == '':
+            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
+            # raise ValueError('Debe seleccionar un directorio válido.')
+
+        # set selected path to the Demand key of the paths shelf
         self.app.set_path('Demand', self.lbl_path['text'])
+
+        # set the selected parameter to the BOM_Explosion key of the parameters shelf
+        self.app.set_parameter('BOM_Explosion', bool(self.cb_bom_state.get()))
+
+        if bool(self.cb_bom_state.get()):
+            # set selected bom path to the BOM key of the paths shelf
+            self.app.set_path('BOM', self.lbl_path_bom['text'])
+
+        # create separate datasets for each of the unique products
         self.app.create_segmented_data()
-        self.open_window_pop_up()
+
+        self.open_window_pop_up('Mensaje', 'Archivos cargados.')
 
         self.close_window()
 
-    def open_window_pop_up(self):
+    def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win, "Mensaje", "Archivo cargados.", self.screen_width, self.screen_height)
+        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
+    def add_bom_labels_to_grid(self):
+
+        #  Label for naming
+        self.lbl_name_bom = Label(self.main_frame,
+                                  text='Directorio de recetas:',
+                                  bg=bg_color,
+                                  padx=5)
+        self.lbl_name_bom.grid(row=2, column=0)
+
+        # Label that shows the selected path
+        self.lbl_path_bom = Label(self.main_frame,
+                                  text=self.app.get_path('BOM'),
+                                  bg=bg_color,
+                                  pady=10,
+                                  borderwidth=2,
+                                  width=150,
+                                  relief="groove",
+                                  anchor=W)
+        self.lbl_path_bom.grid(row=2, column=1, padx=10, pady=10)
+
+        self.btn_browse_bom = Button(self.main_frame,
+                                     text='...',
+                                     command=lambda: self.browse_files('BOM'))
+        self.btn_browse_bom.grid(row=2, column=2)
+
+    def remove_bom_labels_from_grid(self):
+        for widget in [self.lbl_name_bom, self.lbl_path_bom, self.btn_browse_bom]:
+            widget.grid_forget()
+
+    def cb_callback(self):
+        if self.cb_bom_state.get():
+            self.add_bom_labels_to_grid()
+        else:
+            self.remove_bom_labels_from_grid()
 
 
 class WindowPopUpMessage:
@@ -872,7 +947,6 @@ class WindowExportFile:
                                self.width, self.height)
             new_win.grab_set()
             self.master.wait_window(new_win)
-
 
     def open_window_popup(self):
         """Open TopLevel to select path where the input files are located."""
