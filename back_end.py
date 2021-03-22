@@ -1,18 +1,13 @@
 # back_end.py - Backend para leer datos históricos, ejecutar pronósticos, calcular errores, mostrar gráficos y
 #                comparar entre modelos.
 import copy
-
-from statsmodels.tsa.ar_model import AutoReg
-from statsmodels.tsa.statespace.sarimax import SARIMAX
-from statsmodels.tools.eval_measures import rmse
-import matplotlib.pyplot as plt
-import pandas as pd
-import numpy as np
+import datetime
 import os
 import shelve
-from itertools import product
-import datetime
-from sklearn.model_selection import TimeSeriesSplit
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import pmdarima as pm
 
 pd.options.mode.chained_assignment = None
@@ -41,7 +36,7 @@ class FilePathShelf:
         paths_shelf = shelve.open(self._path)
 
         # set keys list
-        self._shelve_keys = ['Working', 'Demand']
+        self._shelve_keys = ['Working', 'Demand', 'BOM']
 
         # try to get value from key, if empty initialize
         for _path in self._shelve_keys:
@@ -107,6 +102,11 @@ class FilePathShelf:
 
 class ConfigShelf:
 
+    @staticmethod
+    def close_shelf(shelf: shelve):
+
+        shelf.close()
+
     def __init__(self, _path):
 
         # path to save the shelve files
@@ -118,7 +118,8 @@ class ConfigShelf:
         # set keys list
         self.config_dict = {'periods_fwd': 30,
                             'File_name': 'Pronóstico',
-                            'Agg_viz': 'Diario'}
+                            'Agg_viz': 'Diario',
+                            'BOM_Explosion': False}
 
         # try to get value from key, if empty initialize
         for key, value in self.config_dict.items():
@@ -134,10 +135,6 @@ class ConfigShelf:
         shelf = shelve.open(self._path, writeback=writeback)
 
         return shelf
-
-    def close_shelf(self, shelf: shelve):
-
-        shelf.close()
 
     def write_to_shelf(self, parameter, value, **kwargs):
         """Set value (value) to key (parameter)."""
@@ -231,6 +228,9 @@ class Application:
         # product dictionary
         self.product_dict = {}
 
+        # parameter to define if BOM explosion should be applied or not
+        self.bom_explosion = self.config_shelf.send_parameter('BOM_Explosion')
+
         # MODEL ATTRIBUTES
 
         # model chosen by the user
@@ -275,7 +275,7 @@ class Application:
                                  'RMSE': 'Raíz del error cuadrático: indica la raíz de MSE en la unidad de medida '
                                          'de los datos de entrada.',
                                  'RMSE_PERC': 'RMSE Porcentual: Indica el RMSE como proporción de la '
-                                             'demanda promedio.'}
+                                              'demanda promedio.'}
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -313,9 +313,10 @@ class Application:
         path = self.file_paths_shelf.send_path('Demand')
         # path = ''
 
+        # raise value error if the key is empty
         if path == '':
             err = "El directorio hacia el archivo de demanda no esta definido."
-            raise ValueError(err)
+            raise KeyError(err)
 
         # if file ends with CSV, read as CSV
         if path.endswith('.csv'):
@@ -374,11 +375,106 @@ class Application:
         # save df as a class attribute
         self.raw_data = df
 
+    def apply_bom(self):
+        """Convert the final product demand to its base components using a BOM (Bill of materials)."""
+
+        # BOM path
+        path_bom = self.file_paths_shelf.send_path('BOM')
+
+        # raise value error if the key is empty
+        if path_bom == '':
+            err = "El directorio hacia el archivo de recetas no esta definido."
+            raise KeyError(err)
+
+        df_demand = copy.deepcopy(self.raw_data)
+
+        # group original demand data by selected fields
+        df_demand = df_demand.groupby(['Fecha', 'Codigo', 'Nombre']).sum().reset_index()
+        df_demand.columns = ['Fecha', 'Cod_Prod', 'Nombre_Prod', 'Cantidad']
+
+        # read BOM file
+        bom = pd.read_excel(path_bom)
+
+        # select columns and change column names
+        bom = bom.loc[:, ['Cod Receta',
+                          'Desc Receta',
+                          'Cant',
+                          'UND',
+                          'Cod Art',
+                          'Descripción del artículo',
+                          'Cantidad',
+                          'Unidad de medida de inventario']]
+        bom.columns = ['Cod_Prod',
+                       'Nombre_Prod',
+                       'Cant_Prod',
+                       'Ud_Prod',
+                       'Cod_Comp',
+                       'Nombre_Comp',
+                       'Cant_Comp',
+                       'Ud_Comp']
+
+        # create table with intermediate products, that are not final components
+        intermediate = pd.DataFrame(bom['Cod_Comp'].drop_duplicates()).dropna()
+        intermediate.columns = ['Cod_Inter']
+
+        # join intermediate products with BOM to get conversion factors between
+        # intermediate products and final components
+        intermediate = intermediate.merge(bom, left_on='Cod_Inter', right_on='Cod_Prod', how='left')
+        intermediate.rename(columns={'Nombre_Prod': 'Nombre_Inter'}, inplace=True)
+        intermediate.drop(columns=['Cod_Prod'], inplace=True)
+        intermediate.dropna(subset=['Cod_Comp'], inplace=True)
+
+        # apply the BOM explosion to the original demand data
+        demand_bom = df_demand.merge(bom.drop(columns=['Nombre_Prod']), on='Cod_Prod', how='left')
+        demand_bom['Cant_Req'] = demand_bom['Cantidad'] * demand_bom['Cant_Comp']
+
+        # group the new data by the component demand
+        demand_bom = demand_bom.groupby(['Cod_Comp', 'Nombre_Comp', 'Fecha'])['Cant_Req'].sum().reset_index()
+        demand_bom = demand_bom[~demand_bom['Nombre_Comp'].str.contains('RECORTES')]
+        demand_bom.columns = ['Cod_Prod', 'Nombre_Prod', 'Fecha', 'Cant_Req']
+
+        # apply the BOM explosion to the dataset, to the get the demand for the final components
+        demand_bom = demand_bom.merge(intermediate, left_on='Cod_Prod', right_on='Cod_Inter', how='left')
+        demand_bom.loc[demand_bom['Cod_Inter'].notna(),
+                       'Cant_Req_Final'] = demand_bom['Cant_Req'] * demand_bom['Cant_Comp']
+        demand_bom.loc[demand_bom['Cod_Inter'].notna(), 'Codigo'] = demand_bom['Cod_Comp']
+        demand_bom.loc[demand_bom['Cod_Inter'].notna(), 'Nombre'] = demand_bom['Nombre_Comp']
+
+        demand_bom.loc[demand_bom['Cant_Req_Final'].isna(), 'Codigo'] = demand_bom[
+            'Cod_Prod']
+        demand_bom.loc[demand_bom['Cant_Req_Final'].isna(), 'Nombre'] = demand_bom[
+            'Nombre_Prod']
+        demand_bom.loc[demand_bom['Cant_Req_Final'].isna(), 'Cant_Req_Final'] = demand_bom[
+            'Cant_Req']
+
+        # keep selected columns and reorder
+        demand_bom = demand_bom[['Codigo', 'Nombre', 'Fecha', 'Cant_Req_Final']]
+        demand_bom.columns = ['Codigo', 'Nombre', 'Fecha', 'Demanda']
+
+        # extract date from datetime values
+        demand_bom['Fecha'] = demand_bom['Fecha'].dt.date
+
+        # group demand by date and categorical features (sum)
+        demand_bom = demand_bom.groupby(['Fecha', 'Codigo', 'Nombre']).sum().reset_index()
+
+        # set date as index
+        demand_bom.set_index(['Fecha'], inplace=True)
+        demand_bom.index = pd.DatetimeIndex(demand_bom.index)
+
+        # return dataset
+        self.raw_data = demand_bom
+
     def create_segmented_data(self):
-        """Separate the original data into n datasets, where n is the number of unique data combinations in the df."""
+        """Separate the raw data into N datasets, where N is the number of unique products in the raw data."""
+
+        print("Creating separate datasets.") # todo: temporary
 
         # Clean data upon function call
         self.clean_data()
+
+        # if bom_explosion is True, apply the BOM Explosion to the raw data
+        if self.bom_explosion:
+            self.apply_bom()
 
         # variable to set the unique values
         var_name = 'Nombre'
@@ -421,8 +517,59 @@ class Application:
         # assign the dictionary to class attribute
         self.segmented_data_sets = data_sets_dict
 
+    def get_best_models(self, queue_):
+        """Get an optimized model for each of the separate product data sets."""
+
+        # check if data is loaded
+        if self.segmented_data_sets is None:
+            raise ValueError('No hay datos cargados para crear un modelo.')
+
+        # check amount of data sets to use as a way of measuring progress bar
+        num_keys = len(self.segmented_data_sets.keys())
+
+        # iterate over data sets for training and predictions
+        for idx, (sku, df) in enumerate(self.segmented_data_sets.items(), 1):
+            queue_.put([f'Entrenando modelo para {sku}.', 0])
+
+            # get the best ARIMA model for each df
+            results = pm.auto_arima(df.loc[:, 'Demanda'],
+                                    out_of_sample_size=20,
+                                    stepwise=True)
+            print(results.summary())
+
+            # fit the best model to the dataset
+            fitted_model = results.fit(df.loc[:, 'Demanda'])
+
+            # save fitted model to dictionary of fitted models
+            self.dict_fitted_models[sku] = fitted_model
+
+            # create a dataset with the real data
+            df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
+
+            # create a dataset with the fitted values
+            fitted_values = pd.DataFrame(results.arima_res_.fittedvalues, columns=['Fitted'], index=df_total.index)
+
+            # join the real data with the fitted values on the rows axis
+            df_total = pd.concat([df_total, fitted_values], axis=1)
+
+            # call a function to get an out of sample prediction, result is a dataset with predictions
+            preds = self.predict_fwd(df, fitted_model)
+
+            # concat the predictions to the (data, fitted) dataset to get all values in one dataset
+            df_total = pd.concat([df_total, preds], axis=1)
+
+            # change column names
+            df_total.columns = self.var_names
+
+            # add the whole dataset to a dictionary with the product name as the key
+            self.dict_fitted_dfs[sku] = df_total
+
+            queue_.put([f'Modelo para {sku} listo.\n', idx / num_keys])
+
+        queue_.put(['Listo', 1])
+
     def evaluate_fit(self):
-        """"""
+        """Calculate forecasting metrics for each of the data sets with the fitted values."""
 
         for sku, df in self.dict_fitted_dfs.items():
             df = copy.deepcopy(df)
@@ -458,10 +605,10 @@ class Application:
             mse = df['Squared_Error'].mean()
 
             # calculate the rmse
-            rmse = mse ** (1 / 2)
+            rmse_ = mse ** (1 / 2)
 
             # calculate the rmse percentage
-            rmse_perc = rmse / df[self.var_names[0]].mean()
+            rmse_perc = rmse_ / df[self.var_names[0]].mean()
 
             self.dict_metrics[sku] = {'AIC': self.dict_fitted_models[sku].aic(),
                                       'BIC': self.dict_fitted_models[sku].bic(),
@@ -469,60 +616,10 @@ class Application:
                                       'MAE': mae,
                                       'MAE_PERC': mae_perc,
                                       'MSE': mse,
-                                      'RMSE': rmse,
+                                      'RMSE': rmse_,
                                       'RMSE_PERC': rmse_perc}
 
             print(f'Metrics for {sku}: ', self.dict_metrics[sku])
-
-    def get_best_models(self, queue_):
-
-        # check if data is loaded
-        if self.segmented_data_sets is None:
-            raise ValueError('No hay datos cargados para crear un modelo.')
-
-        # check amount of datasets to use as a way of measuring progress bar
-        num_keys = len(self.segmented_data_sets.keys())
-
-        # iterate over dataframes for training and predictions
-        for idx, (sku, df) in enumerate(self.segmented_data_sets.items(), 1):
-            queue_.put([f'Entrenando modelo para {sku}.', 0])
-
-            # get the best ARIMA model for each df
-            results = pm.auto_arima(df.loc[:, 'Demanda'],
-                                    out_of_sample_size=20,
-                                    stepwise=True)
-            print(results.summary())
-
-            # fit the best model to the dataset
-            fitted_model = results.fit(df.loc[:, 'Demanda'])
-
-            # save fitted model to dictionary of fitted models
-            self.dict_fitted_models[sku] = fitted_model
-
-            # create a dataframe with the real data
-            df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
-
-            # create a dataframe with the fitted values
-            fitted_values = pd.DataFrame(results.arima_res_.fittedvalues, columns=['Fitted'], index=df_total.index)
-
-            # join the real data with the fitted values on the rows axis
-            df_total = pd.concat([df_total, fitted_values], axis=1)
-
-            # call a function to get an out of sample prediction, result is a dataframe with predictions
-            preds = self.predict_fwd(df, fitted_model)
-
-            # concat the predictions to the (data, fitted) dataset to get all values in one dataframe
-            df_total = pd.concat([df_total, preds], axis=1)
-
-            # change column names
-            df_total.columns = self.var_names
-
-            # add the whole dataframe to a dictionary with the product name as the key
-            self.dict_fitted_dfs[sku] = df_total
-
-            queue_.put([f'Modelo para {sku} listo.\n', idx / num_keys])
-
-        queue_.put(['Listo', 1])
 
     def predict_fwd(self, df, fitted_model):
         """Predict N periods forward using self.periods_fwd as N."""
@@ -616,5 +713,3 @@ if __name__ == '__main__':
     root_path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
 
     app = Application(root_path)
-    # app.set_path('Demand', r"C:\Users\Usuario\Desktop\Data Ticheese\Ventas sample.xlsx")
-    # app.set_path('Demand', r"C:\Users\smirand27701\Desktop\Nueva carpeta\Ventas sample.csv")
