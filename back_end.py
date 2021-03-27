@@ -36,7 +36,11 @@ class FilePathShelf:
         paths_shelf = shelve.open(self._path)
 
         # set keys list
-        self._shelve_keys = ['Working', 'Demand', 'BOM']
+        self._shelve_keys = ['Working',
+                             'Demand',
+                             'Forecast',
+                             'BOM',
+                             'Temp']
 
         # try to get value from key, if empty initialize
         for _path in self._shelve_keys:
@@ -117,6 +121,7 @@ class ConfigShelf:
 
         # set keys list
         self.config_dict = {'periods_fwd': 30,
+                            'Last_process': 'Demand',
                             'File_name': 'Pronóstico',
                             'Agg_viz': 'Diario',
                             'BOM_Explosion': False}
@@ -306,16 +311,18 @@ class Application:
 
         return self.config_shelf.send_parameter(parameter)
 
-    def read_data(self):
+    def read_data(self, process_: str):
         """Returns pandas dataframe with time series data."""
 
         # Get Demand path from parameters shelf
-        path = self.file_paths_shelf.send_path('Demand')
-        # path = ''
+        path = self.file_paths_shelf.send_path(process_)
 
         # raise value error if the key is empty
         if path == '':
-            err = "El directorio hacia el archivo de demanda no esta definido."
+            if process_ == 'Demand':
+                err = "El directorio hacia el archivo de demanda no esta definido."
+            else:
+                err = "El directorio hacia el archivo de pronóstico no esta definido."
             raise KeyError(err)
 
         # if file ends with CSV, read as CSV
@@ -330,7 +337,7 @@ class Application:
             df = pd.read_excel(path)
             return df
 
-    def clean_data(self):
+    def clean_data(self, process_: str):
         """Cleans the time series data.
         First column is assumed to have datetime like values.
         Second column is assumed to be SKU.
@@ -339,13 +346,29 @@ class Application:
         Columns in between the third and the last are treated as extra aggregation parameters for the forecast."""
 
         # read the data
-        df = self.read_data()
+        df = self.read_data(process_)
 
-        # rename columns with dictionary
-        mapping = {df.columns[0]: 'Fecha',
-                   df.columns[1]: 'Codigo',
-                   df.columns[2]: 'Nombre',
-                   df.columns[-1]: 'Demanda'}
+        if df.shape[1] != 4:
+            if process_ == 'Demand':
+                raise ValueError('El archivo de demanda indicado tiene una estructura incorrecta.\n'
+                                 'Se requieren cuatro columnas Fecha-Codigo-Nombre-Demanda.\n'
+                                 f'El archivo cargado tiene {df.shape[1]} columnas.')
+            else:
+                raise ValueError('El archivo de demanda indicado tiene una estructura incorrecta.\n'
+                                 'Se requieren cuatro columnas Fecha-Codigo-Nombre-Pronóstico.\n'
+                                 f'El archivo cargado tiene {df.shape[1]} columnas.')
+
+        if process_ == 'Demand':
+            # rename columns with dictionary
+            mapping = {df.columns[0]: 'Fecha',
+                       df.columns[1]: 'Codigo',
+                       df.columns[2]: 'Nombre',
+                       df.columns[-1]: 'Demanda'}
+        else:
+            mapping = {df.columns[0]: 'Fecha',
+                       df.columns[1]: 'Codigo',
+                       df.columns[2]: 'Nombre',
+                       df.columns[-1]: 'Pronóstico'}
 
         df = df.rename(columns=mapping)
 
@@ -464,16 +487,16 @@ class Application:
         # return dataset
         self.raw_data = demand_bom
 
-    def create_segmented_data(self):
+    def create_segmented_data(self, process_: str):
         """Separate the raw data into N datasets, where N is the number of unique products in the raw data."""
 
-        print("Creating separate datasets.") # todo: temporary
+        print("Creating separate datasets.")  # todo: temporary
 
         # Clean data upon function call
-        self.clean_data()
+        self.clean_data(process_)
 
         # if bom_explosion is True, apply the BOM Explosion to the raw data
-        if self.bom_explosion:
+        if self.config_shelf.send_parameter('BOM_Explosion') and process_ == 'Demand':
             self.apply_bom()
 
         # variable to set the unique values
@@ -496,11 +519,12 @@ class Application:
         for unique in unique_products:
             df_ = df[df[var_name] == unique]
 
-            # fill missing dates with 0
-            df_ = df_.asfreq('D')
-            df_['Demanda'].fillna(0, inplace=True)
-            df_.fillna(method='ffill', inplace=True)
-            df_list.append(df_)
+            if process_ == 'Demand':
+                # fill missing dates with 0
+                df_ = df_.asfreq('D')
+                df_['Demanda'].fillna(0, inplace=True)
+                df_.fillna(method='ffill', inplace=True)
+                df_list.append(df_)
 
         # create total demand dataset, grouped by date
         grouped_df = df.reset_index()
