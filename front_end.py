@@ -77,6 +77,7 @@ class Main:
         self.data_plot = None
         self.model_plot = None
         self.pd_table = None
+        self.model_ready = False
 
         # --- DROPDOWN MENU DECLARATION - TOOLBAR ---
         main_menu = Menu(self.master)
@@ -111,16 +112,16 @@ class Main:
 
         self.img_new = PhotoImage(file=r"C:\icons\new.png")
         self.btn_new = Button(self.button_control_frame, text='Nuevo', image=self.img_new, compound='left',
-                              bg=bg_color, width=75, padx=10)
+                              bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
         self.btn_new.pack(side=LEFT)
 
         self.img_open = PhotoImage(file=r"C:\icons\open.png")
         self.btn_open = Button(self.button_control_frame, text='Abrir', image=self.img_open, compound='left',
-                               bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
+                               bg=bg_color, width=75, padx=10, command=self.open_window_select_forecast_path)
         self.btn_open.pack(side=LEFT)
 
         self.img_save = PhotoImage(file=r"C:\icons\save.png")
-        self.btn_save = Button(self.button_control_frame, text='Guardar', image=self.img_save, compound='left',
+        self.btn_save = Button(self.button_control_frame, text='Exportar', image=self.img_save, compound='left',
                                bg=bg_color, width=75, padx=10, command=self.open_window_export)
         self.btn_save.pack(side=LEFT)
 
@@ -215,8 +216,6 @@ class Main:
                                        text='Configuración',
                                        width=self.config_width,
                                        height=self.bottom_frame_height,
-                                       # highlightbackground='black',
-                                       # highlightthickness=0.5,
                                        bg=bg_color)
         self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
@@ -247,9 +246,44 @@ class Main:
         self.btn_refresh_view.pack(side=BOTTOM, pady=10)
 
         # Automatic load on boot
-        self.update_gui()
+        process_ = self.back_end.config_shelf.send_parameter('Last_process')
+        self.update_gui(process_)
 
         center_window(self.master, self.screen_width, self.screen_height)
+
+    def open_window_select_work_path(self):
+        """Open TopLevel to select path where the input files are located."""
+
+        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
+        # this window is closed
+        self.new_win = Toplevel(self.master)
+        win_obj = WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        if win_obj.carga_exitosa:
+            print('Carga exitosa.')
+            self.update_gui('Demand')
+
+        # update combobox with new data
+        # self.update_tree_and_plot()
+
+    def open_window_select_forecast_path(self):
+        """Open TopLevel to select path where the input files are located."""
+
+        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
+        # this window is closed
+        self.new_win = Toplevel(self.master)
+        win_obj = WindowSelectForecastPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        if win_obj.carga_exitosa:
+            print('Carga exitosa.')
+            self.update_gui('Forecast')
+
+        # update combobox with new data
+        # self.update_tree_and_plot()
 
     def create_fig(self, df, plot_type):
         # if line plot isn't empty, destroy the widget before adding a new one
@@ -277,8 +311,15 @@ class Main:
 
         df = df.reset_index()
 
+        try:
+            df.drop(columns=['Fecha_strf'], inplace=True)
+        except KeyError:
+            pass
+
         if plot_type == 'Demand':
             df.plot(x='Fecha', y='Demanda', legend=False, ax=self.ax_data)
+            self.ax_data.set_ylabel('Cantidad (kg)')
+            self.ax_data.set_title('Demanda Real')
 
         if plot_type == 'Forecast':
             col_names = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico']
@@ -286,29 +327,25 @@ class Main:
             df.plot(x=col_names[0], y=col_names[1], color='b', ax=self.ax_model)
             df.plot(x=col_names[0], y=col_names[2], color='r', ax=self.ax_model)
             df.plot(x=col_names[0], y=col_names[3], color='g', ax=self.ax_model)
+            self.ax_model.set_ylabel('Cantidad (kg)')
+            self.ax_model.set_title('Demanda Real y Pronóstico')
 
     def show_table(self, df, table_type):
 
         if table_type == 'Demand':
-            df.drop(columns=['Codigo', 'Nombre'], inplace=True)
+            try:
+                df.drop(columns=['Codigo', 'Nombre'], inplace=True)
+            # when the models havent been trained, the df only contains the values column
+            except KeyError:
+                pass
 
-        if self.combobox_time_freq.get() == 'Semanal':
-            df = df.groupby(pd.Grouper(freq='1W')).sum()
+        try:
             df = df.reset_index()
-            df['Fecha'] = df['Fecha'].dt.strftime('Semana %U')
-            df = df.set_index('Fecha')
+            df.drop(columns=['Fecha'], inplace=True)
+            df.set_index('Fecha_strf', inplace=True)
 
-        elif self.combobox_time_freq.get() == 'Mensual':
-            df = df.groupby(pd.Grouper(freq='M')).sum()
-            df = df.reset_index()
-            df['Fecha'] = df['Fecha'].dt.strftime('%b-%Y')
-            df = df.set_index('Fecha')
-
-        elif self.combobox_time_freq.get() == 'Diario':
-            df = df.reset_index()
-            # df = df[['Fecha', 'Demanda']]
-            df['Fecha'] = df['Fecha'].dt.strftime('%d/%m/%Y')
-            df = df.set_index('Fecha')
+        except KeyError:
+            pass
 
         if table_type == 'Forecast':
             df = df.fillna('-')
@@ -318,6 +355,10 @@ class Main:
 
         if self.pd_table is not None:
             print('Redrawing.')
+
+        for widget in self.frame_table.winfo_children():
+            print('Destroying.')
+            widget.destroy()
 
         self.pd_table = pandastable.Table(self.frame_table,
                                           dataframe=df,
@@ -329,12 +370,12 @@ class Main:
         self.pd_table.show()
         self.pd_table.redraw()
 
-    def update_gui(self):
+    def update_gui(self, process_: str):
         """set a new combobox on the choose_sku combobox that assigns the sku name to its options, and assign the
          combobox to the same location in the grid"""
 
         try:
-            self.back_end.create_segmented_data()
+            self.back_end.create_segmented_data(process_)
 
             # declare columns
             self.tree_view['columns'] = '1'
@@ -344,6 +385,9 @@ class Main:
             self.tree_view['show'] = 'headings'
             self.tree_view.heading('1', text='Producto', anchor='w')
 
+            # clear tree view
+            self.tree_view.delete(*self.tree_view.get_children())
+
             # insert row for every key in the segmented_data_sets dictionary from the backend
             for i in list(self.back_end.segmented_data_sets.keys()):
                 self.tree_view.insert("", "end", text=i, values=(i,))
@@ -352,20 +396,14 @@ class Main:
             self.tree_view.bind("<Double-1>", self.refresh_views)
 
             # call function to update the plot and the table on the GUI
-            self.show_plot_and_table('DEFAULT', 'Demand', 0)
+            self.show_plot_and_table('DEFAULT', process_, 0)
 
-        except KeyError:
+        except (KeyError, ValueError):
             # temporary label in table frame
             Label(self.frame_table,
                   text='Cargar un archivo para ver información aquí.',
                   height=self.top_frame_height,
                   anchor='center').pack(fill=BOTH, expand=1)
-
-            # temporary label in bottom frame
-            Label(self.bottom_frame,
-                  text='Cargar un archivo para ver información aquí.',
-                  width=self.plot_width,
-                  anchor='center').pack(side=LEFT, fill=BOTH)
 
     def show_plot_and_table(self, sku, plot_type, event):
         """Call the create figure function with the data of the passed sku parameter.
@@ -373,6 +411,7 @@ class Main:
         sku: name of the SKU or DEFAULT, if DEFAULT, shows the currently selected SKU on the tree view
         plot_type: Demand plots the raw data, Forecast shows the fitted values and the forecast.
         """
+
         if plot_type == 'Demand':
             # get dictionary of datasets
             sep_df_dict = self.back_end.segmented_data_sets
@@ -387,12 +426,31 @@ class Main:
         else:
             df = sep_df_dict[sku]
 
-        # call function to show table on top frame
-        if self.back_end.dict_fitted_dfs != {} and plot_type != 'Demand':
-            self.show_table(df, 'Forecast')
-        elif plot_type == 'Demand' and df.columns[0] == 'Codigo':
-            self.show_table(df, 'Demand')
+        # todo: TEST
+        if self.combobox_time_freq.get() == 'Semanal':
+            strf_format = 'Semana %U'
+            df = df.groupby(pd.Grouper(freq='1W')).sum()
 
+        elif self.combobox_time_freq.get() == 'Mensual':
+            strf_format = '%b-%Y'
+            df = df.groupby(pd.Grouper(freq='M')).sum()
+
+        else:
+            strf_format = '%d/%m/%Y'
+
+        # create a formatted string column based on the date
+        # format depends on level of aggregation
+        df = df.reset_index()
+        df['Fecha_strf'] = df['Fecha'].dt.strftime(strf_format)
+        df = df.set_index('Fecha')
+
+        # call function to show table on top frame
+        if self.model_ready and plot_type != 'Demand':
+            self.show_table(df, 'Forecast')
+        elif plot_type == 'Demand':
+            self.show_table(df, plot_type)
+
+        # call function to show plot on the bottom frame
         self.create_fig(df, plot_type)
 
     def run_optimizer(self):
@@ -402,19 +460,6 @@ class Main:
             self.back_end.config_shelf.write_to_shelf('periods_fwd', new_periods_fwd)
 
         self.spawn_thread('Optimizador')
-
-    def open_window_select_work_path(self):
-        """Open TopLevel to select path where the input files are located."""
-
-        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
-        # this window is closed
-        self.new_win = Toplevel(self.master)
-        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
-
-        # update combobox with new data
-        # self.update_tree_and_plot()
 
     def open_window_export(self):
         self.new_win = Toplevel(self.master)
@@ -445,8 +490,7 @@ class Main:
 
             # enable the metrics tab
             self.update_metrics('DEFAULT')
-
-            # self.periodic_call(process, thread, queue_)
+            self.model_ready = True
 
     def periodic_call(self, process, thread, queue_):
 
@@ -479,15 +523,18 @@ class Main:
 
     def refresh_views(self, event):
 
-        new_periods_fwd = int(self.spinbox_periods.get())
+        # execute this block if the models have been trained
+        if self.model_ready:
+            new_periods_fwd = int(self.spinbox_periods.get())
 
-        if new_periods_fwd != self.back_end.config_shelf.send_parameter('periods_fwd'):
-            print('Old: ', type(self.back_end.config_shelf.send_parameter('periods_fwd')))
-            print('New: ', type(new_periods_fwd))
-            print('Periods forward changed.')
-            self.back_end.config_shelf.write_to_shelf('periods_fwd', new_periods_fwd)
+            # if the user specified a value for the periods_fwd parameter, refresh the predictions
+            if new_periods_fwd != self.back_end.config_shelf.send_parameter('periods_fwd'):
+                print('Old: ', type(self.back_end.config_shelf.send_parameter('periods_fwd')))
+                print('New: ', type(new_periods_fwd))
+                print('Periods forward changed.')
+                self.back_end.config_shelf.write_to_shelf('periods_fwd', new_periods_fwd)
 
-            self.back_end.refresh_predictions()
+                self.back_end.refresh_predictions()
 
         # get selected item from the tree view, if not available, use DEFAULT, which uses the first key
         try:
@@ -527,6 +574,7 @@ class Main:
 
 
 class WindowSelectWorkPath:
+
     def __init__(self, master, app: Application, screen_width_, screen_height_):
         self.master = master
         self.master.title("Módulo de Demanda - COPROLAC")
@@ -537,6 +585,7 @@ class WindowSelectWorkPath:
         self.height = self.screen_height / 5
         self.app = app
         self.new_win = None
+        self.carga_exitosa = False
 
         # --- NIVEL 0 ---
 
@@ -643,11 +692,14 @@ class WindowSelectWorkPath:
             self.app.set_path('BOM', self.lbl_path_bom['text'])
 
         # create separate datasets for each of the unique products
-        self.app.create_segmented_data()
+        try:
+            self.app.create_segmented_data('Demand')
+            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
+            self.carga_exitosa = True
+            self.close_window()
 
-        self.open_window_pop_up('Mensaje', 'Archivos cargados.')
-
-        self.close_window()
+        except ValueError as e:
+            self.open_window_pop_up('Error', e)
 
     def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
@@ -689,6 +741,109 @@ class WindowSelectWorkPath:
             self.add_bom_labels_to_grid()
         else:
             self.remove_bom_labels_from_grid()
+
+
+class WindowSelectForecastPath:
+
+    def __init__(self, master, app: Application, screen_width_, screen_height_):
+        self.master = master
+        self.master.title("Carga de pronóstico")
+        self.master.configure(background=bg_color)
+        self.screen_width = screen_width_
+        self.screen_height = screen_height_
+        self.width = self.screen_width / 2
+        self.height = self.screen_height / 5
+        self.app = app
+        self.new_win = None
+
+        # --- NIVEL 0 ---
+
+        # FRAME CONTENEDOR
+        self.main_frame = LabelFrame(self.master,
+                                     text='Escoja un directorio:',
+                                     bg=bg_color,
+                                     width=screen_width_ / 5,
+                                     padx=10,
+                                     pady=10)
+        self.main_frame.grid(padx=10,
+                             pady=10,
+                             row=0,
+                             column=0,
+                             columnspan=2)
+
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=self.save_selection)
+        self.btn_accept.grid(pady=10, row=1, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=self.close_window)
+        self.btn_cancel.grid(pady=10, row=1, column=1)
+
+        # --- NIVEL 1 ---
+
+        #  Label for naming
+        self.lbl_name_path = Label(self.main_frame,
+                                   text='Directorio:',
+                                   bg=bg_color,
+                                   padx=5)
+        self.lbl_name_path.grid(row=0, column=0)
+
+        # Label that shows the selected path
+        self.lbl_path = Label(self.main_frame,
+                              text=self.app.get_path('Forecast'),
+                              bg=bg_color,
+                              pady=10,
+                              borderwidth=2,
+                              width=150,
+                              relief="groove",
+                              anchor=W)
+        self.lbl_path.grid(row=0, column=1, padx=10, pady=10)
+
+        self.btn_browse = Button(self.main_frame,
+                                 text='...',
+                                 command=self.browse_files)
+        self.btn_browse.grid(row=0, column=2)
+
+        center_window(self.master, self.screen_width, self.screen_height)
+
+    def close_window(self):
+        self.master.destroy()
+
+    def browse_files(self):
+        filename = filedialog.askopenfilename(initialdir="/",
+                                              title="Seleccione un archivo",
+                                              filetypes=(("Archivo de Excel",
+                                                          "*.xlsx*"),
+                                                         ("Archivo CSV",
+                                                          "*.csv*")))
+
+        self.lbl_path.configure(text=filename)
+
+    def save_selection(self):
+
+        if self.lbl_path['text'] == '':
+            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
+
+        # set selected path to the Demand key of the paths shelf
+        self.app.set_path('Forecast', self.lbl_path['text'])
+
+        # create separate datasets for each of the unique products
+        try:
+            self.app.create_segmented_data('Forecast')
+            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
+            self.carga_exitosa = True
+            self.close_window()
+
+        except ValueError as e:
+            self.open_window_pop_up('Error', e)
+
+    def open_window_pop_up(self, title, msg):
+        self.new_win = Toplevel(self.master)
+        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
 
 class WindowPopUpMessage:
