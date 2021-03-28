@@ -121,7 +121,7 @@ class ConfigShelf:
 
         # set keys list
         self.config_dict = {'periods_fwd': 30,
-                            'Last_process': 'Demand',
+                            'Mode': 'Demand',
                             'File_name': 'Pronóstico',
                             'Agg_viz': 'Diario',
                             'BOM_Explosion': False}
@@ -310,6 +310,14 @@ class Application:
     def get_parameter(self, parameter):
 
         return self.config_shelf.send_parameter(parameter)
+
+    def clear_data(self):
+        """Clear information from the back end."""
+
+        self.dict_fitted_models = {}
+        self.dict_fitted_dfs = {}
+        self.dict_errors = {}
+        self.dict_metrics = {}
 
     def read_data(self, process_: str):
         """Returns pandas dataframe with time series data."""
@@ -524,7 +532,8 @@ class Application:
                 df_ = df_.asfreq('D')
                 df_['Demanda'].fillna(0, inplace=True)
                 df_.fillna(method='ffill', inplace=True)
-                df_list.append(df_)
+
+            df_list.append(df_)
 
         # create total demand dataset, grouped by date
         grouped_df = df.reset_index()
