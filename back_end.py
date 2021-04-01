@@ -124,7 +124,16 @@ class ConfigShelf:
                             'Mode': 'Demand',
                             'File_name': 'Pronóstico',
                             'Agg_viz': 'Diario',
-                            'BOM_Explosion': False}
+                            'BOM_Explosion': False,
+                            'Segmentacion': {'Supermercados': 0.4,
+                                             'Panaderías': 0.3,
+                                             'Restaurantes': 0.1,
+                                             'Industrial': 0.05,
+                                             'Abastecedor': 0.05,
+                                             'Institucional': 0.02,
+                                             'Particular': 0.02,
+                                             'Tiquete': 0.05,
+                                             'Distribuidor': 0.01}}
 
         # try to get value from key, if empty initialize
         for key, value in self.config_dict.items():
@@ -265,8 +274,10 @@ class Application:
         # dictionary to store metrics for each model
         self.dict_metrics = {}
 
-        # dictionary for metric descriptions
+        # dictionary to store segmentation percentages for each product
+        self.dict_segment_percentages = {}
 
+        # dictionary for metric descriptions
         self.dict_metric_desc = {'AIC': 'Criterio de información de Akaike',
                                  'BIC': 'Criterio de información Bayesiano',
                                  'Bias': 'Promedio del error: Un valor positivo indica una sobreestimación de la '
