@@ -89,15 +89,11 @@ class Main:
 
         # treeview and table widths
         self.tree_width = int(self.width * 0.2)
-        print(self.tree_width)
         self.table_width = int(self.width * 0.8)
-        print(self.table_width)
 
         # bottom frame widths
         self.plot_width = int(self.width * 0.6)
-        print(self.plot_width)
         self.config_width = int(self.width * 0.2)
-        print(self.config_width)
 
         # master geometry, width and height definition
         self.master.geometry('%dx%d+0+0' % (self.width, self.height))
@@ -106,7 +102,7 @@ class Main:
         self.back_end = Application(root_path)
 
         # the layout of the GUI depends on the mode attribute
-        # mode =
+        # mode = Demand or Forecast
         self.mode = self.back_end.get_parameter('Mode')
 
         # initializing parameters
@@ -149,7 +145,7 @@ class Main:
         # configure menu in toplevel
         self.master.config(menu=main_menu)
 
-        # --- LEVEL 0 ---
+        # --- Level 0 --- Contains the Paned Window, the Tree View and the Main Frame
 
         # Frame for top control buttons
         self.button_control_frame = LabelFrame(self.master, bg=bg_color)
@@ -167,104 +163,124 @@ class Main:
                                bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
         self.btn_open.pack(side=LEFT)
 
+        # Button to export files
         self.img_save = PhotoImage(file=r"C:\icons\save.png")
         self.btn_save = Button(self.button_control_frame, text='Exportar', image=self.img_save, compound='left',
                                bg=bg_color, width=75, padx=10, command=self.open_window_export)
         self.btn_save.pack(side=LEFT)
 
+        # Button to refresh the views
         self.img_refresh = PhotoImage(file=r"C:\icons\refresh.png")
         self.btn_refresh = Button(self.button_control_frame, text='Refrescar', image=self.img_refresh, compound='left',
                                   bg=bg_color, width=75, padx=10, command=lambda: self.refresh_views(0))
         self.btn_refresh.pack(side=LEFT)
 
+        # Button to run a process
         self.img_run = PhotoImage(file=r"C:\icons\run.png")
         self.btn_run = Button(self.button_control_frame, text='Ejecutar', image=self.img_run, compound='left',
                               bg=bg_color, width=75, padx=10, command=self.run_optimizer)
         self.btn_run.pack(side=LEFT)
 
+        # Horizon Label
         self.lbl_horizon = Label(self.button_control_frame, text='Horizonte:', bg=bg_color)
         self.lbl_horizon.pack(side=LEFT, padx=(10, 0))
 
+        # Spinbox to select the amount of periods to forecast in the future
         saved_periods_fwd = self.back_end.config_shelf.send_parameter('periods_fwd')
         var = DoubleVar(value=int(saved_periods_fwd))
         self.spinbox_periods = Spinbox(self.button_control_frame, from_=0, to=500, textvariable=var)
         self.spinbox_periods.pack(side=LEFT)
 
+        # Horizon label
         self.lbl_days = Label(self.button_control_frame, text='días', bg=bg_color)
         self.lbl_days.pack(side=LEFT)
 
+        # Paned Window that contains the tree view and a master frame
         self.main_paned = PanedWindow(self.master,
                                       width=self.width,
                                       height=self.height,
                                       orient=HORIZONTAL)
 
+        # Tree View declaration, double click is binded to the tree view
         self.tree_view = ttk.Treeview(self.master)
-        self.tree_view.bind("<Double-1>", self.refresh_views)
+        self.tree_view.bind("<Double-1>", self.refresh_views)  # Todo: Possible duplicate?
 
-        # declare columns
+        # declare columns for the Tree View
         self.tree_view['columns'] = '1'
         self.tree_view.column('1', anchor='w')
 
-        # declare headings
+        # declare headings for the Tree View
         self.tree_view['show'] = 'headings'
         self.tree_view.heading('1', text='Producto', anchor='w')
 
+        # Main Frame declaration, on the right of the tree view, inside the Paned Window
         self.main_frame = Frame(self.main_paned,
                                 width=self.width,
                                 height=self.height,
                                 bg=bg_color)
 
+        # Add the tree view and te main frame to the Paned Window, and pack it to fill the screen
         self.main_paned.add(self.tree_view)
         self.main_paned.add(self.main_frame)
         self.main_paned.pack(fill=BOTH, expand=1)
 
-        # --- NIVEL 1 ---
+        # --- Level 1 --- Top and Bottom Frames
 
-        # --- FRAMES CONTENEDORES ---
-        # Top frame to cover the top half of the screen, will have another frame inside it with the pandastable
+        # Top Frame that covers the top half of the screen
+        # Contains the Table Frame
         self.top_frame = Frame(self.main_frame,
                                width=self.table_width,
                                height=self.top_frame_height,
                                bg=bg_color)
-        self.top_frame.pack(fill='x', expand=True, anchor='n')
 
-        # Frame that contains plots to the left and config parameters to the right
+        # Bottom Frame that contains the bottom half of the screen
+        # Contains Plot Frame to the left and Config Frame to the right
         self.bottom_frame = Frame(self.main_frame,
                                   width=self.table_width,
                                   height=self.bottom_frame_height,
                                   bg=bg_color)
-        self.bottom_frame.pack(fill='x', expand=True, anchor='s')
 
+        # Pack the Top and Bottom Frames
+        self.pack_to_main_frame()
+
+        # --- Level 2 --- Table Frame, Notebook Frame, Config Frame
+
+        # Table Frame that contains the pandastable
+        # Packed to the Top Frame
         self.frame_table = Frame(self.top_frame,
                                  width=self.table_width,
                                  height=self.top_frame_height,
                                  bg=bg_color)
-        self.frame_table.pack(fill='x', expand=True, anchor='n')
+        self.frame_table.pack(fill='x',
+                              expand=True,
+                              anchor='n')
 
-        # Frame for notebook
+        # Frame that contains the Notebook
         self.frame_notebook = Frame(self.bottom_frame,
                                     width=self.plot_width,
                                     height=self.bottom_frame_height,
                                     bg=bg_color)
         self.frame_notebook.pack(fill='both', expand=True, side=LEFT)
 
-        # Notebook to alternate between plot and metrics using a tab system
-        self.notebook_frame = ttk.Notebook(self.frame_notebook)
-        self.tab_data_plot = ttk.Frame(self.notebook_frame)
-        self.tab_model_plot = ttk.Frame(self.notebook_frame)
-        self.tab_metrics = ttk.Frame(self.notebook_frame)
-        self.notebook_frame.add(self.tab_data_plot, text='Datos')
-        self.notebook_frame.add(self.tab_model_plot, text='Modelo', state='disabled')
-        self.notebook_frame.add(self.tab_metrics, text='Métricas', state='disabled')
-        self.notebook_frame.pack()
+        # Notebook contains the Raw Data plot, the Model plot and the Metrics Tab
+        # User switches between tabs as needed
+        # Model and Metrics tabs default to disabled, as user needs to run the optimizer before seeing data there
+        self.notebook_plotting = ttk.Notebook(self.frame_notebook)
+        self.tab_data_plot = ttk.Frame(self.notebook_plotting)
+        self.tab_model_plot = ttk.Frame(self.notebook_plotting)
+        self.tab_metrics = ttk.Frame(self.notebook_plotting)
+        self.notebook_plotting.add(self.tab_data_plot, text='Datos')
+        self.notebook_plotting.add(self.tab_model_plot, text='Modelo', state='disabled')
+        self.notebook_plotting.add(self.tab_metrics, text='Métricas', state='disabled')
+        self.notebook_plotting.pack()
 
-        # Frame for the metrics tab
+        # Metrics Frame, contains three columns
+        # Metric Name | Metric Value | Metric Description
         self.metrics_frame = Frame(self.tab_metrics)
         self.metrics_frame.pack(fill=BOTH, expand=True)
-
         self.metrics_frame.columnconfigure((0, 1, 2), uniform='equal', weight=1)
 
-        # Frame for config
+        # Config Frame, contains several configuration widgets
         self.frame_config = LabelFrame(self.bottom_frame,
                                        text='Configuración',
                                        width=self.config_width,
@@ -272,37 +288,60 @@ class Main:
                                        bg=bg_color)
         self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
-        # --- NIVEL 2 ---
+        # --- Level 3 --- Time Granularity Combobox, N Periods Entry, Refresh Views Button
 
-        # label for the combobox
+        # Label for the combobox
         Label(self.frame_config, text='Nivel de detalle del tiempo:', bg=bg_color).pack(padx=10, anchor='w')
-        # Combobox: change time frequency
+
+        # Combobox: Changes time frequency to daily, weekly, monthly
+        # This option changes the table and plot LOD
         freqs_ = ['Diario', 'Semanal', 'Mensual']
         self.combobox_time_freq = ttk.Combobox(self.frame_config, value=freqs_)
         self.combobox_time_freq.current(0)
         self.combobox_time_freq.bind("<<ComboboxSelected>>", self.refresh_views)
         self.combobox_time_freq.pack(padx=10, pady=(0, 10), anchor='w')
 
-        # label for the entry
+        # Label for the entry
         Label(self.frame_config, text='Cantidad de períodos a pronosticar:', bg=bg_color).pack(padx=10, anchor='w')
+
         # Entry: change amount of periods forward to forecast
         saved_periods_fwd = self.back_end.config_shelf.send_parameter('periods_fwd')
         self.entry_periods_fwd = Entry(self.frame_config, width=15)
         self.entry_periods_fwd.insert(END, saved_periods_fwd)
         self.entry_periods_fwd.pack(padx=10, pady=(0, 10), anchor='w')
 
-        # Button: refresh the views
+        # Button: Refresh the views
         self.btn_refresh_view = Button(self.frame_config,
                                        text='Refrescar vistas',
                                        padx=10,
                                        command=lambda: self.refresh_views(0))
         self.btn_refresh_view.pack(side=BOTTOM, pady=10)
 
-        # Automatic load on boot
+        # Automatic load on boot, uses the last known Mode setting, Demand or Forecast
+        # Loads data accordingly
         process_ = self.back_end.config_shelf.send_parameter('Mode')
         self.update_gui(process_)
 
         center_window(self.master, self.screen_width, self.screen_height)
+
+    def pack_to_main_frame(self):
+
+        # Pack the Top Frame
+        # Fill the x axis
+        self.top_frame.pack(fill='x',
+                            expand=True,
+                            anchor='n')
+
+        # Pack the Bottom Frame, fill the x axis
+        self.bottom_frame.pack(fill='x',
+                               expand=True,
+                               anchor='s')
+
+        # todo: add try, except clause
+        try:
+            self.temp_label.pack_forget()
+        except AttributeError:
+            pass
 
     def populate_tree(self, item_list):
         """
@@ -333,16 +372,32 @@ class Main:
     def clear_gui(self):
         """Function to clear data from the back end and the GUI."""
 
-        # clear widgets from the right frame
-        for widget in self.main_frame.winfo_children():
-            widget.destroy()
+        # Change the model ready status
+        if self.model_ready:
+            self.model_ready = False
 
-        # clear information from the tree view
+        # Disable the model tabs
+        self.notebook_plotting.tab(self.tab_model_plot, state='disabled')
+        self.notebook_plotting.tab(self.tab_metrics, state='disabled')
+
+        # Clear information from the tree view
         self.clear_tree()
 
-        # add a frame to the tree view
-        temp_label = Label(self.main_frame, text='Cargue archivos para ver algo aquí.')
-        temp_label.pack(fill=BOTH, expand=True)
+        # Unpack the top and bottom frames
+        # Unpack the temporary label to avoid having more than one temporary labels active, if the user clicks New
+        # more than one time.
+        try:
+            self.top_frame.pack_forget()
+            self.bottom_frame.pack_forget()
+            self.temp_label.pack_forget()
+
+        except AttributeError:
+            pass
+
+        # Add a Label telling user to load files on the Top and Bottom Frames
+        temp_text = 'Cargue archivos para ver algo aquí.'
+        self.temp_label = Label(self.main_frame, text=temp_text)
+        self.temp_label.pack(fill=BOTH, expand=True)
 
     def create_fig(self, df, plot_type):
         """
@@ -549,7 +604,7 @@ class Main:
             self.new_win.grab_set()
             self.master.wait_window(self.new_win)
 
-            self.notebook_frame.tab(self.tab_model_plot, state='normal')
+            self.notebook_plotting.tab(self.tab_model_plot, state='normal')
 
             self.show_plot_and_table('DEFAULT', 'Forecast', 0)
 
@@ -611,7 +666,7 @@ class Main:
     def update_metrics(self, sku):
 
         # change state of the metrics tab of the notebook
-        self.notebook_frame.tab(self.tab_metrics, state='normal')
+        self.notebook_plotting.tab(self.tab_metrics, state='normal')
 
         # get the model data frames
         sep_df_dict = self.back_end.dict_fitted_dfs
@@ -662,6 +717,9 @@ class Main:
             # clear tree view
             self.clear_tree()
 
+            # Pack Top and Bottom Frames to the Main Frame
+            self.pack_to_main_frame()
+
             # get items from the segmented data sets dictionary to populate the tree view
             item_list = list(self.back_end.segmented_data_sets.keys())
             self.populate_tree(item_list)
@@ -686,6 +744,9 @@ class Main:
 
         if win_obj.carga_exitosa:
             print('Carga exitosa.')
+            self.model_ready = False
+            self.notebook_plotting.tab(self.tab_model_plot, state='disabled')
+            self.notebook_plotting.tab(self.tab_metrics, state='disabled')
 
         # update the GUI, the layout changes based on the process
         self.active_process = win_obj.process
@@ -753,8 +814,9 @@ class WindowSelectWorkPath:
                                 sticky='W')
 
         # Path Label, second column
+        self.last_process = self.app.config_shelf.send_parameter('Mode')
         self.lbl_path = Label(self.main_frame,
-                              # text=self.app.get_path('Demand'),
+                              text=self.app.get_path(self.last_process),
                               bg=bg_color,
                               pady=10,
                               borderwidth=2,
@@ -794,7 +856,12 @@ class WindowSelectWorkPath:
                       'Pronóstico']
         self.cbx_file_type = ttk.Combobox(self.main_frame,
                                           value=file_types)
-        self.cbx_file_type.current(0)
+
+        if self.last_process == 'Forecast':
+            self.cbx_file_type.current(1)
+        else:
+            self.cbx_file_type.current(0)
+
         self.cbx_file_type.bind("<<ComboboxSelected>>", self.cbx_callback)
         self.cbx_file_type.grid(row=1,
                                 column=1,
@@ -911,6 +978,9 @@ class WindowSelectWorkPath:
 
             except ValueError as e:
                 self.open_window_pop_up('Error', e)
+
+            except PermissionError as e:
+                self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
 
         else:
             self.open_window_pop_up('Error', 'El directorio indicado es inválido.')
