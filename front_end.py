@@ -17,6 +17,7 @@ from back_end import Application
 from back_end import ConfigShelf
 
 plt.style.use('ggplot')
+bg_color = 'white'
 
 
 def center_window(toplevel, screen_width, screen_height):
@@ -131,7 +132,8 @@ class Main:
         sub_menu_file.add_command(label="Cargar información",
                                   command=self.open_window_select_work_path)
         sub_menu_file.add_command(label='Exportar',
-                                  command=self.open_window_export)
+                                  # command=self.open_window_export) # todo: temporary
+                                  command=self.open_window_segment)
 
         # commands for the model sub menu
         sub_menu_model.add_command(label='Optimizar modelo',
@@ -320,6 +322,7 @@ class Main:
         # Automatic load on boot, uses the last known Mode setting, Demand or Forecast
         # Loads data accordingly
         process_ = self.back_end.config_shelf.send_parameter('Mode')
+        # process_= self.active_process # todo: temporary
         self.update_gui(process_)
 
         center_window(self.master, self.screen_width, self.screen_height)
@@ -606,7 +609,7 @@ class Main:
 
             self.notebook_plotting.tab(self.tab_model_plot, state='normal')
 
-            self.show_plot_and_table('DEFAULT', 'Forecast', 0)
+            self.show_plot_and_table('DEFAULT', 'Model', 0)
 
             # enable the metrics tab
             self.update_metrics('DEFAULT')
@@ -744,9 +747,12 @@ class Main:
 
         if win_obj.carga_exitosa:
             print('Carga exitosa.')
-            self.model_ready = False
-            self.notebook_plotting.tab(self.tab_model_plot, state='disabled')
-            self.notebook_plotting.tab(self.tab_metrics, state='disabled')
+
+            # If the user loads new data, a new model must be trained.
+            if self.model_ready:
+                self.model_ready = False
+                self.notebook_plotting.add(self.tab_model_plot, state='disabled')
+                self.notebook_plotting.add(self.tab_metrics, state='disabled')
 
         # update the GUI, the layout changes based on the process
         self.active_process = win_obj.process
@@ -755,6 +761,12 @@ class Main:
     def open_window_export(self):
         self.new_win = Toplevel(self.master)
         WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+    def open_window_segment(self):
+        self.new_win = Toplevel(self.master)
+        WindowSegmentOptions(self.new_win, self.back_end, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -1034,7 +1046,7 @@ class WindowSelectWorkPath:
             self.remove_section_from_grid([self.lbl_name_path_bom, self.lbl_path_bom, self.btn_browse_bom])
 
 
-class WindowSelectForecastPath:
+class WindowSegmentOptions:
 
     def __init__(self, master, app: Application, screen_width_, screen_height_):
         self.master = master
@@ -1046,13 +1058,12 @@ class WindowSelectForecastPath:
         self.height = self.screen_height / 5
         self.app = app
         self.new_win = None
-        self.carga_exitosa = False
 
         # --- NIVEL 0 ---
 
         # FRAME CONTENEDOR
         self.main_frame = LabelFrame(self.master,
-                                     text='Escoja un directorio:',
+                                     text='Segmentación:',
                                      bg=bg_color,
                                      width=screen_width_ / 5,
                                      padx=10,
@@ -1061,79 +1072,158 @@ class WindowSelectForecastPath:
                              pady=10,
                              row=0,
                              column=0,
-                             columnspan=2)
+                             columnspan=3)
+
+        self.total_frame = Frame(self.master,
+                                 bg=bg_color,
+                                 width=screen_width_ / 5,
+                                 padx=10)
+        self.total_frame.grid(padx=10,
+                              pady=10,
+                              row=1,
+                              column=0,
+                              columnspan=3,
+                              sticky='WE')
+
+        self.lbl_total = Label(self.total_frame,
+                               text='Total',
+                               bg=bg_color)
+        self.lbl_total.pack(expand=True, fill=BOTH, side=LEFT)
+
+        self.lbl_total_val = Label(self.total_frame,
+                                   text='',
+                                   bg=bg_color)
+        self.lbl_total_val.pack(expand=True, fill=BOTH, side=LEFT)
+        # self.lbl_total_val.grid(row=0,
+        #                         column=1,
+        #                         columnspan=2)
 
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
                                  command=self.save_selection)
-        self.btn_accept.grid(pady=10, row=1, column=0)
+        self.btn_accept.grid(pady=10, row=2, column=0)
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
                                  command=self.close_window)
-        self.btn_cancel.grid(pady=10, row=1, column=1)
+        self.btn_cancel.grid(pady=10, row=2, column=2)
 
         # --- NIVEL 1 ---
 
-        #  Label for naming
-        self.lbl_name_path = Label(self.main_frame,
-                                   text='Directorio:',
-                                   bg=bg_color,
-                                   padx=5)
-        self.lbl_name_path.grid(row=0, column=0)
+        #  First Column Title Label
+        self.lbl_col_segment_path = Label(self.main_frame,
+                                          text='Segmento',
+                                          bg=bg_color,
+                                          padx=5)
+        self.lbl_col_segment_path.grid(row=0, column=0)
 
-        # Label that shows the selected path
-        self.lbl_path = Label(self.main_frame,
-                              text=self.app.get_path('Forecast'),
-                              bg=bg_color,
-                              pady=10,
-                              borderwidth=2,
-                              width=150,
-                              relief="groove",
-                              anchor=W)
-        self.lbl_path.grid(row=0, column=1, padx=10, pady=10)
+        #  Second Column Title Label
+        self.lbl_col_value_path = Label(self.main_frame,
+                                        text='Porcentaje',
+                                        bg=bg_color,
+                                        padx=5)
+        self.lbl_col_value_path.grid(row=0, column=1)
 
-        self.btn_browse = Button(self.main_frame,
-                                 text='...',
-                                 command=self.browse_files)
-        self.btn_browse.grid(row=0, column=2)
+        self.populate_frame()
 
         center_window(self.master, self.screen_width, self.screen_height)
 
     def close_window(self):
         self.master.destroy()
 
-    def browse_files(self):
-
-        # get the last path that the user selected
-        ini_dir_ = self.app.get_path('Temp')
-
-        # call function to open a file selection window
-        filepath, filename = browse_files_master(ini_dir_)
-
-        # set the selected path as the new Temp path
-        self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
-
-        self.lbl_path.configure(text=filename)
-
     def save_selection(self):
 
-        if self.lbl_path['text'] == '':
-            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
+        segments = [val.get() for val in self.e_segments]
+        percentages = [float(var.get()) / 100 if var.get() != "" else 0 for var in self.sv_values]
 
-        # set selected path to the Demand key of the paths shelf
-        self.app.set_path('Forecast', self.lbl_path['text'])
+        if round(sum(percentages), 2) != 1:
+            self.open_window_pop_up('Error', 'El total debe sumar 100.')
 
-        # create separate datasets for each of the unique products
-        try:
-            self.app.create_segmented_data('Forecast')
-            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
-            self.carga_exitosa = True
-            self.app.set_parameter('Mode', 'Forecast')
+        else:
+            # todo: guardar al backend, hacer uno por cada SKU cargado
+
+            new_dict = dict(zip(segments, percentages))
+
+            self.app.set_parameter('Segmentacion', new_dict)
+
             self.close_window()
 
-        except ValueError as e:
-            self.open_window_pop_up('Error', e)
+    def populate_frame(self):
+        """For every segment in a dictionary, create a name-value pair of label-entry."""
+
+        # Get percentages from the backend
+        segment_dict = self.app.get_parameter('Segmentacion')
+
+        # declare empty lists to store the widgets
+        self.sv_values = []
+        self.e_segments = []
+        self.e_percentages = []
+        self.buttons = []
+
+        # add name entries for each segment to the grid
+        # add value entries for each segment to the grid
+        for idx, (key, value) in enumerate(segment_dict.items(), 1):
+            # name entry, column 0
+            e = Entry(self.main_frame)
+            e.insert(0,
+                     key)
+            e.grid(row=idx,
+                   column=0)
+            self.e_segments.append(e)
+
+            # value entry, add a StringVar to each one to trace changes
+            # the trace action is connected to the callback function
+            self.sv_values.append(StringVar())
+            e_value = Entry(self.main_frame,
+                            textvariable=self.sv_values[-1])
+            e_value.insert(0,
+                           value * 100)
+            e_value.grid(row=idx,
+                         column=1)
+            self.e_percentages.append(e_value)
+            self.sv_values[-1].trace('w', self.callback)
+
+        # add a
+        self.pack_add_button()
+
+        intvars = [float(var.get()) if var.get() != "" else 0 for var in self.sv_values]
+        self.lbl_total_val['text'] = round(sum(intvars), 2)
+
+    def callback(self, *args):
+        """
+        Each time a value is changed, this function is called.
+        Sums all the Value Entries and adds the total to a label in the lower section of the window.
+        """
+
+        percentages = [float(var.get()) if var.get() != "" else 0 for var in self.sv_values]
+        self.lbl_total_val['text'] = round(sum(percentages), 2)
+
+    def pack_add_button(self):
+        """Add a button to the last row on the grid where a Value Entry exists."""
+        last_button = Button(self.main_frame, text='add', command=self.add_segment)
+        self.buttons.append(last_button)
+        last_button.grid(row=len(self.e_segments), column=2)
+
+    def remove_last_button(self):
+        """Remove the last button on the grid."""
+        self.buttons[-1].destroy()
+
+    def add_segment(self):
+
+        self.sv_values.append(StringVar())
+
+        e1 = Entry(self.main_frame)
+        e1.grid(row=len(self.e_percentages) + 1, column=0)
+        self.e_segments.append(e1)
+
+        e2 = Entry(self.main_frame, textvariable=self.sv_values[-1])
+        e2.grid(row=len(self.e_percentages) + 1, column=1)
+        self.sv_values[-1].trace('w', self.callback)
+        self.e_percentages.append(e2)
+
+        # remove button and add another one
+        self.remove_last_button()
+        self.pack_add_button()
 
     def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
@@ -1463,7 +1553,6 @@ class ThreadedClient(threading.Thread):
 
 
 if __name__ == '__main__':
-    bg_color = 'white'
     path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
 
     root = Tk()
