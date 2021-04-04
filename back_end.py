@@ -123,6 +123,7 @@ class ConfigShelf:
         self.config_dict = {'periods_fwd': 30,
                             'Mode': 'Demand',
                             'File_name': 'Pronóstico',
+                            'File_name_segmented': 'Pronóstico segmentado',
                             'Agg_viz': 'Diario',
                             'BOM_Explosion': False,
                             'Segmentacion': {'Supermercados': 0.4,
@@ -711,19 +712,24 @@ class Application:
                 # replace the new dataset with the old one on the fitted dataframes dictionary
                 self.dict_fitted_dfs[sku] = total_df_new
 
-    def export_data(self, path, file_name, extension):
+    def export_data(self, path, file_name, extension, process):
 
         print('Exportando.')
         file_name = file_name + extension
 
         col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
 
+        if self.dict_fitted_dfs == {} and (process == 'Demand' or process == 'Model'):
+            dict_export = dict(self.dict_fitted_dfs)
+        else:
+            dict_export = dict(self.segmented_data_sets)
+
         # check if model ran
-        if self.dict_fitted_dfs == {}:
+        if dict_export == {}:
             raise ValueError('The model has to be trained first.')
 
         df_export = pd.DataFrame()
-        for sku, df in self.dict_fitted_dfs.items():
+        for sku, df in dict_export.items():
 
             # skip totals
             if sku == 'Total':
@@ -740,8 +746,27 @@ class Application:
             # format date
             df['Fecha'] = df['Fecha'].dt.date
 
+            # change column order
             df = df[col_order]
+
+            # if process is Forecast, the loaded forecast must be divided into subgroups
+            # for each key in the segment dictionary, a new forecast must be calculated
+            # the final forecast for each segment is then appended to a new total forecast and exported
+            if process == 'Forecast':
+                df_segmented = pd.DataFrame()
+                segment_dict = self.get_parameter('Segmentacion')
+                for key, value in segment_dict.items():
+                    df['Grupo'] = key
+                    df['Pronóstico'] = df['Pronóstico'] * float(value)
+                    df_segmented = pd.concat([df_segmented, df], axis=0)
+
+                df = pd.DataFrame(df_segmented)
+
             df_export = pd.concat([df_export, df], axis=0)
+
+        if process == 'Forecast':
+            col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
+            df_export = df_export[col_order]
 
         if extension == '.xlsx':
             df_export.to_excel(os.path.join(path, file_name),
