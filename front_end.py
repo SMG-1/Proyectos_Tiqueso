@@ -1,3 +1,4 @@
+import collections
 import datetime
 import os
 import queue
@@ -5,6 +6,7 @@ import threading
 from tkinter import *
 from tkinter import filedialog
 from tkinter import ttk
+from functools import partial
 
 import pandas as pd
 import pandastable
@@ -340,7 +342,6 @@ class Main:
                                expand=True,
                                anchor='s')
 
-        # todo: add try, except clause
         try:
             self.temp_label.pack_forget()
         except AttributeError:
@@ -759,8 +760,11 @@ class Main:
         self.update_gui(win_obj.process)
 
     def open_window_export(self):
+
+        process_ = self.back_end.config_shelf.send_parameter('Mode')
+
         self.new_win = Toplevel(self.master)
-        WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height, process_)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -1124,106 +1128,150 @@ class WindowSegmentOptions:
                                         padx=5)
         self.lbl_col_value_path.grid(row=0, column=1)
 
-        self.populate_frame()
+        # declare empty lists to store the widgets
+        self.string_vars = []
+        self.entries_groups = []
+        self.entries_values = []
+        self.delete_buttons = []
+
+        # Get groups and values from the backend, convert them to separate lists to access the indices
+        # and keep them ordered
+        self.orig_segment_dict = self.app.get_parameter('Segmentacion')
+        self.groups = list(self.orig_segment_dict.keys())
+        self.values = list(self.orig_segment_dict.values())
+
+        # populate the frame for the first time
+        self.populate_frame(self.groups, self.values)
+
+        # add the new segment button to the grid
+        self.pack_add_button()
+
+        # sum the string values and add them to the total Label
+        self.calc_sv_sum()
 
         center_window(self.master, self.screen_width, self.screen_height)
 
-    def close_window(self):
-        self.master.destroy()
+    def populate_frame(self, groups: list, values: list):
+        """For every group in a dictionary, create a name-value pair of label-entry."""
+
+        # declare empty lists to store the widgets
+        self.string_vars = []
+        self.entries_groups = []
+        self.entries_values = []
+        self.delete_buttons = []
+
+        try:
+            for widget in self.main_frame.winfo_children():
+                widget.destroy()
+        except AttributeError:
+            pass
+
+        # add name entries for each group to the grid
+        # add value entries for each group to the grid
+        for idx, (group, value) in enumerate(zip(groups, values)):
+
+            # name entry, column 0
+            e = Entry(self.main_frame)
+            e.insert(0, group)
+            e.grid(row=idx + 1,
+                   column=0)
+            self.entries_groups.append(e)
+
+            # value entry, add a StringVar to each one to trace changes
+            # the trace action is connected to the callback function
+            self.string_vars.append(StringVar())
+            e_value = Entry(self.main_frame,
+                            textvariable=self.string_vars[-1])
+            e_value.insert(0,
+                           value * 100)
+            e_value.grid(row=idx + 1,
+                         column=1)
+            self.entries_values.append(e_value)
+            self.string_vars[-1].trace('w', self.callback)
+
+            # add delete buttons to each of the segments
+            btn = Button(self.main_frame,
+                         text='-',
+                         padx=5,
+                         command=partial(self.remove_segment, idx))
+            btn.grid(row=idx + 1,
+                     column=2)
+            self.delete_buttons.append(btn)
+
+        # add the new group button to the grid
+        self.pack_add_button()
+
+        # sum the string values and add them to the total Label
+        self.calc_sv_sum()
+
+    def calc_sv_sum(self):
+        """
+        Sums all the Value Entries and adds the total to a label in the lower section of the window.
+        """
+
+        sv_values = [float(var.get()) if var.get() != "" else 0 for var in self.string_vars]
+        self.lbl_total_val['text'] = round(sum(sv_values), 2)
+
+    def callback(self, *args):
+        """
+        Each time a value Entry is changed, this function is called.
+        """
+
+        self.calc_sv_sum()
+
+    def pack_add_button(self):
+        """Add a button to the last row on the grid where a Value Entry exists."""
+
+        # Button declaration
+        self.add_seg_btn = Button(self.main_frame,
+                                  text='+',
+                                  command=self.add_segment)
+
+        # Place it in the grid, on the row equal to the length of the groups list
+        self.add_seg_btn.grid(row=len(self.groups),
+                              column=3)
+
+    def remove_last_button(self):
+        """Remove the last button on the grid."""
+
+        self.add_seg_btn.destroy()
+
+    def add_segment(self):
+        """Add a segment to the list."""
+
+        # Add a new default group to the groups and values lists
+        self.groups.append('Nuevo')
+        self.values.append(0)
+
+        # Repopulate the frame
+        self.populate_frame(self.groups, self.values)
+
+    def remove_segment(self, row):
+
+        self.groups.pop(row)
+        self.values.pop(row)
+        self.remove_last_button()
+        self.populate_frame(self.groups, self.values)
 
     def save_selection(self):
 
-        segments = [val.get() for val in self.e_segments]
-        percentages = [float(var.get()) / 100 if var.get() != "" else 0 for var in self.sv_values]
+        # If there are duplicated groups, show an error on a pop up window
+        if len([item for item, count in collections.Counter(self.groups).items() if count > 1])> 0:
+            self.open_window_pop_up('Error', 'No puede haber grupos duplicados.')
 
-        if round(sum(percentages), 2) != 1:
+        # If the total isn't 1, show an Error on a pop up window.
+        elif round(sum(self.values), 2) != 1:
             self.open_window_pop_up('Error', 'El total debe sumar 100.')
 
         else:
-            # todo: guardar al backend, hacer uno por cada SKU cargado
-
-            new_dict = dict(zip(segments, percentages))
+            new_dict = dict(zip(self.groups, self.values))
 
             self.app.set_parameter('Segmentacion', new_dict)
 
             self.close_window()
 
-    def populate_frame(self):
-        """For every segment in a dictionary, create a name-value pair of label-entry."""
-
-        # Get percentages from the backend
-        segment_dict = self.app.get_parameter('Segmentacion')
-
-        # declare empty lists to store the widgets
-        self.sv_values = []
-        self.e_segments = []
-        self.e_percentages = []
-        self.buttons = []
-
-        # add name entries for each segment to the grid
-        # add value entries for each segment to the grid
-        for idx, (key, value) in enumerate(segment_dict.items(), 1):
-            # name entry, column 0
-            e = Entry(self.main_frame)
-            e.insert(0,
-                     key)
-            e.grid(row=idx,
-                   column=0)
-            self.e_segments.append(e)
-
-            # value entry, add a StringVar to each one to trace changes
-            # the trace action is connected to the callback function
-            self.sv_values.append(StringVar())
-            e_value = Entry(self.main_frame,
-                            textvariable=self.sv_values[-1])
-            e_value.insert(0,
-                           value * 100)
-            e_value.grid(row=idx,
-                         column=1)
-            self.e_percentages.append(e_value)
-            self.sv_values[-1].trace('w', self.callback)
-
-        # add a
-        self.pack_add_button()
-
-        intvars = [float(var.get()) if var.get() != "" else 0 for var in self.sv_values]
-        self.lbl_total_val['text'] = round(sum(intvars), 2)
-
-    def callback(self, *args):
-        """
-        Each time a value is changed, this function is called.
-        Sums all the Value Entries and adds the total to a label in the lower section of the window.
-        """
-
-        percentages = [float(var.get()) if var.get() != "" else 0 for var in self.sv_values]
-        self.lbl_total_val['text'] = round(sum(percentages), 2)
-
-    def pack_add_button(self):
-        """Add a button to the last row on the grid where a Value Entry exists."""
-        last_button = Button(self.main_frame, text='add', command=self.add_segment)
-        self.buttons.append(last_button)
-        last_button.grid(row=len(self.e_segments), column=2)
-
-    def remove_last_button(self):
-        """Remove the last button on the grid."""
-        self.buttons[-1].destroy()
-
-    def add_segment(self):
-
-        self.sv_values.append(StringVar())
-
-        e1 = Entry(self.main_frame)
-        e1.grid(row=len(self.e_percentages) + 1, column=0)
-        self.e_segments.append(e1)
-
-        e2 = Entry(self.main_frame, textvariable=self.sv_values[-1])
-        e2.grid(row=len(self.e_percentages) + 1, column=1)
-        self.sv_values[-1].trace('w', self.callback)
-        self.e_percentages.append(e2)
-
-        # remove button and add another one
-        self.remove_last_button()
-        self.pack_add_button()
+    def close_window(self):
+        self.master.destroy()
 
     def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
@@ -1431,7 +1479,7 @@ class WindowTraining:
 
 
 class WindowExportFile:
-    def __init__(self, master, app: Application, screen_width, screen_height):
+    def __init__(self, master, app: Application, screen_width, screen_height, process):
         self.master = master
         self.app = app
         self.screen_width = screen_width
@@ -1439,6 +1487,7 @@ class WindowExportFile:
         self.width = screen_width / 2
         self.height = screen_height / 5
         self.thread_ = None
+        self.process = process
 
         # configure columns
         self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
@@ -1457,7 +1506,10 @@ class WindowExportFile:
         self.btn_path.grid(row=0, column=0, pady=5, sticky='WE')
 
         self.entry_output_file = Entry(self.frame_master)
-        file_name = self.app.config_shelf.send_parameter('File_name')
+        if process == 'Demand' or self.process == 'Model':
+            file_name = self.app.config_shelf.send_parameter('File_name')
+        else:
+            file_name = self.app.config_shelf.send_parameter('File_name_segmented')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
         self.entry_output_file.insert(END, file_name + f' {today_date}')
         self.entry_output_file.grid(row=1, column=0, pady=5, sticky='WE')
@@ -1477,9 +1529,10 @@ class WindowExportFile:
         center_window(self.master, self.screen_width, self.screen_height)
 
     def call_backend_export(self):
+
         ext_ = self.exts[self.combobox_extensions.get()]
         try:
-            self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_)
+            self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_, self.process)
             new_win = Toplevel(self.master)
             WindowPopUpMessage(new_win, 'Mensaje', 'Archivo exportado.', self.width, self.height)
             new_win.grab_set()
