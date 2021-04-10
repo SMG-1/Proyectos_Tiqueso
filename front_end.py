@@ -137,6 +137,11 @@ class Main:
                                   # command=self.open_window_export) # todo: temporary
                                   command=self.open_window_segment)
 
+        # commands for the config sub menu
+        sub_menu_config.add_command(label='Segmentación',
+                                    command=self.open_window_segment, )
+        # state='disabled')
+
         # commands for the model sub menu
         sub_menu_model.add_command(label='Optimizar modelo',
                                    command=self.run_optimizer)
@@ -790,87 +795,55 @@ class WindowSelectWorkPath:
         self.carga_exitosa = False
         self.process = None
 
+        self.last_process = self.app.config_shelf.send_parameter('Mode')
+
         # --- LEVEL 0 ---
 
-        # Container Frame
-        self.main_frame = LabelFrame(self.master,
-                                     text='Escoja un directorio:',
-                                     bg=bg_color,
-                                     width=screen_width_ / 5,
-                                     padx=10,
-                                     pady=10)
-        self.main_frame.grid(padx=10,
-                             pady=10,
-                             row=0,
-                             column=0,
-                             columnspan=2)
+        # Container Frame for the routine combobox
+        self.routine_frame = LabelFrame(self.master,
+                                        text='Escoja una rutina:',
+                                        bg=bg_color,
+                                        width=screen_width_ / 5,
+                                        padx=10,
+                                        pady=10)
+        self.routine_frame.grid(padx=10,
+                                pady=10,
+                                row=0,
+                                column=0,
+                                columnspan=2)
+
+        # Container Frame for the paths
+        self.paths_frame = LabelFrame(self.master,
+                                      text='Escoja un directorio:',
+                                      bg=bg_color,
+                                      width=screen_width_ / 5,
+                                      padx=10,
+                                      pady=10)
+        self.paths_frame.grid(padx=10,
+                              pady=10,
+                              row=1,
+                              column=0,
+                              columnspan=2)
 
         # accept and cancel buttons
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
                                  command=self.save_selection)
-        self.btn_accept.grid(pady=10, row=1, column=0)
+        self.btn_accept.grid(pady=10, row=2, column=0)
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
                                  command=self.close_window)
-        self.btn_cancel.grid(pady=10, row=1, column=1)
+        self.btn_cancel.grid(pady=10, row=2, column=1)
 
-        # --- NIVEL 1 ---
+        # --- LEVEL 1 ---
 
-        #  ROW 0: LABEL THAT SHOWS THE PATH
-
-        # Name Label, first column
-        self.lbl_name_path = Label(self.main_frame,
-                                   text='Directorio:',
-                                   bg=bg_color,
-                                   padx=5)
-        self.lbl_name_path.grid(row=0,
-                                column=0,
-                                sticky='W')
-
-        # Path Label, second column
-        self.last_process = self.app.config_shelf.send_parameter('Mode')
-        self.lbl_path = Label(self.main_frame,
-                              text=self.app.get_path(self.last_process),
-                              bg=bg_color,
-                              pady=10,
-                              borderwidth=2,
-                              width=150,
-                              relief="groove",
-                              anchor='w')
-        self.lbl_path.grid(row=0,
-                           column=1,
-                           padx=10,
-                           pady=10,
-                           sticky='WE')
-
-        # Browse Button, third column, to open the browse files window
-        self.btn_browse = Button(self.main_frame,
-                                 text='...',
-                                 command=lambda: self.browse_files('Demand'))
-        self.btn_browse.grid(row=0,
-                             column=2,
-                             padx=10,
-                             pady=10,
-                             sticky='WE')
-
-        # ROW 1: COMBOBOX THAT SHOWS THE FILE TYPE
-
-        # Name Label, first column
-        self.lbl_name_file_type = Label(self.main_frame,
-                                        text='Archivo:',
-                                        bg=bg_color,
-                                        padx=5)
-        self.lbl_name_file_type.grid(row=1,
-                                     column=0,
-                                     pady=10,
-                                     sticky='W')
-
+        # Routine Frame
         # Selection Combobox, second column,  to choose which type of file to open, demand or forecast
         file_types = ['Demanda',
-                      'Pronóstico']
-        self.cbx_file_type = ttk.Combobox(self.main_frame,
+                      'Pronóstico',
+                      'Métricas']
+        self.cbx_file_type = ttk.Combobox(self.routine_frame,
                                           value=file_types)
 
         if self.last_process == 'Forecast':
@@ -879,19 +852,42 @@ class WindowSelectWorkPath:
             self.cbx_file_type.current(0)
 
         self.cbx_file_type.bind("<<ComboboxSelected>>", self.cbx_callback)
-        self.cbx_file_type.grid(row=1,
+        self.cbx_file_type.grid(row=0,
                                 column=1,
                                 columnspan=2,
                                 padx=10,
                                 pady=10,
                                 sticky='WE')
 
-        # NEXT WIDGETS ARE NOT PACKED BY DEFAULT
+        # Paths Frame
 
-        # ROW 2: CHECKBUTTON TO APPLY BOM OR NOT
+        #  ROW 0: LABEL THAT SHOWS THE PATH
+
+        # Name Label, first column
+        self.lbl_name_path = Label(self.paths_frame,
+                                   text='Directorio:',
+                                   bg=bg_color,
+                                   padx=5)
+
+        # Path Label, second column
+        self.lbl_path = Label(self.paths_frame,
+                              text=self.app.get_path(self.last_process),
+                              bg=bg_color,
+                              pady=10,
+                              borderwidth=2,
+                              width=150,
+                              relief="groove",
+                              anchor='w')
+
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse = Button(self.paths_frame,
+                                 text='...',
+                                 command=lambda: self.browse_files('Level_1'))
+
+        # ROW 1: CHECKBUTTON TO APPLY BOM OR NOT
 
         # Name Label
-        self.lbl_name_cb_bom = Label(self.main_frame,
+        self.lbl_name_cb_bom = Label(self.paths_frame,
                                      text='Aplicar recetas?',
                                      bg=bg_color,
                                      padx=5,
@@ -899,41 +895,72 @@ class WindowSelectWorkPath:
 
         # Checkbutton to control the BOM Explosion parameter
         self.cb_bom_state = IntVar()
-        self.cb_bom = Checkbutton(self.main_frame, variable=self.cb_bom_state, bg='white',
+        self.cb_bom = Checkbutton(self.paths_frame, variable=self.cb_bom_state, bg='white',
                                   command=self.cb_callback)
 
-        # ROW 3:  LABEL THAT SHOWS THE PATH TO BILL OF MATERIALS
+        # ROW 3:  LABEL THAT SHOWS THE PATH TO BILL OF MATERIALS OR PATH TO FORECAST
 
         # Name Label
-        self.lbl_name_path_bom = Label(self.main_frame,
-                                       text='Directorio de recetas:',
-                                       bg=bg_color,
-                                       padx=5)
+        self.text_options = ['Recetas:', 'Pronóstico:']
+        if self.last_process == 'Forecast':
+            text = self.text_options[1]
+        else:
+            text = self.text_options[0]
+
+        self.lbl_name_second_path = Label(self.paths_frame,
+                                          text=text,
+                                          bg=bg_color,
+                                          padx=5)
 
         # BOM Path Label
-        self.lbl_path_bom = Label(self.main_frame,
-                                  text=self.app.get_path('BOM'),
-                                  bg=bg_color,
-                                  pady=10,
-                                  borderwidth=2,
-                                  width=150,
-                                  relief="groove",
-                                  anchor=W)
+        self.lbl_second_path = Label(self.paths_frame,
+                                     text=self.app.get_path('BOM'),
+                                     bg=bg_color,
+                                     pady=10,
+                                     borderwidth=2,
+                                     width=150,
+                                     relief="groove",
+                                     anchor=W)
+
+        self.add_first_path_to_grid()
 
         # if Demand is selected, add the demand section to grid upon initializing
         if self.cbx_file_type.get() == 'Demanda':
 
-            self.add_demand_section_to_grid()
+            self.add_bom_combobox()
 
             # if the BOM explosion parameter on the backend is true, select the checkbutton
             # and add the BOM section to the grid
             if self.app.config_shelf.send_parameter('BOM_Explosion'):
                 self.cb_bom.select()
-                self.add_bom_section_to_grid()
+                self.add_second_path_to_grid('Demanda')
             else:
                 self.cb_bom.deselect()
 
+        elif self.cbx_file_type.get() == 'Métricas':
+            self.add_second_path_to_grid('Métricas')
+
         center_window(self.master, self.screen_width, self.screen_height)
+
+    def add_first_path_to_grid(self):
+        # Name Label, first column
+        self.lbl_name_path.grid(row=0,
+                                column=0,
+                                sticky='W')
+
+        # Path Label, second column
+        self.lbl_path.grid(row=0,
+                           column=1,
+                           padx=10,
+                           pady=10,
+                           sticky='WE')
+
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse.grid(row=0,
+                             column=2,
+                             padx=10,
+                             pady=10,
+                             sticky='WE')
 
     def close_window(self):
         self.master.destroy()
@@ -950,11 +977,11 @@ class WindowSelectWorkPath:
         self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
 
         # change the text content of the label
-        if label_name == 'Demand':
+        if label_name == 'Level_1':
             self.lbl_path.configure(text=filename)
 
-        elif label_name == 'BOM':
-            self.lbl_path_bom.configure(text=filename)
+        elif label_name == 'Level_2':
+            self.lbl_second_path.configure(text=filename)
 
     def save_selection(self):
         """"""
@@ -962,10 +989,12 @@ class WindowSelectWorkPath:
         # open PopUp warning if the Path Label is empty
         if self.lbl_path['text'] == '':
             self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
-            # raise ValueError('Debe seleccionar un directorio válido.')
 
+        # The combobox value defines the process to be run on the backend.
         if self.cbx_file_type.get() == 'Demanda':
             self.process = process = 'Demand'
+        elif self.cbx_file_type.get() == 'Métricas':
+            self.process = process = 'Metrics'
         else:
             self.process = process = 'Forecast'
 
@@ -982,7 +1011,7 @@ class WindowSelectWorkPath:
 
                 if bool(self.cb_bom_state.get()):
                     # set selected bom path to the BOM key of the paths shelf
-                    self.app.set_path('BOM', self.lbl_path_bom['text'])
+                    self.app.set_path('BOM', self.lbl_second_path['text'])
 
             # create separate datasets for each of the unique products
             try:
@@ -1001,6 +1030,14 @@ class WindowSelectWorkPath:
         else:
             self.open_window_pop_up('Error', 'El directorio indicado es inválido.')
 
+    def remove_children_from_paths_frame(self):
+
+        try:
+            for widget in self.paths_frame.winfo_children():
+                widget.grid_forget()
+        except AttributeError:
+            pass
+
     def open_window_pop_up(self, title, msg):
 
         # open new TopLevel as a popup window
@@ -1011,11 +1048,28 @@ class WindowSelectWorkPath:
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
-    def add_demand_section_to_grid(self):
+    def add_bom_combobox(self):
         """If the combobox == Demand, add this section to the grid."""
 
         self.lbl_name_cb_bom.grid(row=2, column=0)
         self.cb_bom.grid(row=2, column=1)
+
+    def add_second_path_to_grid(self, routine: str):
+
+        if routine == 'Métricas':
+            self.lbl_name_second_path['text'] = self.text_options[1]
+
+        else:
+            self.lbl_name_second_path['text'] = self.text_options[0]
+
+        self.lbl_name_second_path.grid(row=3, column=0)
+
+        self.lbl_second_path.grid(row=3, column=1, padx=10, pady=10)
+
+        self.btn_browse_second_path = Button(self.paths_frame,
+                                             text='...',
+                                             command=lambda: self.browse_files('Level_2'))
+        self.btn_browse_second_path.grid(row=3, column=2)
 
     def remove_section_from_grid(self, widgets_list: list):
         """Remove widget list from the grid."""
@@ -1024,30 +1078,35 @@ class WindowSelectWorkPath:
 
     def add_bom_section_to_grid(self):
 
-        self.lbl_name_path_bom.grid(row=3, column=0)
-        self.lbl_path_bom.grid(row=3, column=1, padx=10, pady=10)
+        self.lbl_name_second_path.grid(row=3, column=0)
+        self.lbl_second_path.grid(row=3, column=1, padx=10, pady=10)
 
-        self.btn_browse_bom = Button(self.main_frame,
-                                     text='...',
-                                     command=lambda: self.browse_files('BOM'))
-        self.btn_browse_bom.grid(row=3, column=2)
+        self.btn_browse_second_path = Button(self.paths_frame,
+                                             text='...',
+                                             command=lambda: self.browse_files('BOM'))
+        self.btn_browse_second_path.grid(row=3, column=2)
 
     def cbx_callback(self, event):
+
+        self.remove_children_from_paths_frame()
+
+        self.add_first_path_to_grid()
+
         if self.cbx_file_type.get() == 'Demanda':
-            self.add_demand_section_to_grid()
+            self.add_bom_combobox()
 
             if self.cb_bom_state.get():
-                self.add_bom_section_to_grid()
+                self.add_second_path_to_grid('Demanda')
 
-        else:
-            self.remove_section_from_grid([self.lbl_name_cb_bom, self.cb_bom, self.lbl_name_path_bom,
-                                           self.lbl_path_bom, self.btn_browse_bom])
+        elif self.cbx_file_type.get() == 'Métricas':
+            self.add_second_path_to_grid('Métricas')
 
     def cb_callback(self):
         if self.cb_bom_state.get():
-            self.add_bom_section_to_grid()
+            self.add_second_path_to_grid('Demanda')
         else:
-            self.remove_section_from_grid([self.lbl_name_path_bom, self.lbl_path_bom, self.btn_browse_bom])
+            self.remove_section_from_grid([self.lbl_name_second_path, self.lbl_second_path,
+                                           self.btn_browse_second_path])
 
 
 class WindowSegmentOptions:
@@ -1169,7 +1228,6 @@ class WindowSegmentOptions:
         # add name entries for each group to the grid
         # add value entries for each group to the grid
         for idx, (group, value) in enumerate(zip(groups, values)):
-
             # name entry, column 0
             e = Entry(self.main_frame)
             e.insert(0, group)
@@ -1256,7 +1314,7 @@ class WindowSegmentOptions:
     def save_selection(self):
 
         # If there are duplicated groups, show an error on a pop up window
-        if len([item for item, count in collections.Counter(self.groups).items() if count > 1])> 0:
+        if len([item for item, count in collections.Counter(self.groups).items() if count > 1]) > 0:
             self.open_window_pop_up('Error', 'No puede haber grupos duplicados.')
 
         # If the total isn't 1, show an Error on a pop up window.
@@ -1538,7 +1596,8 @@ class WindowExportFile:
             new_win.grab_set()
             self.master.wait_window(new_win)
 
-        except ValueError:
+        # except ValueError:
+        except AttributeError:
             new_win = Toplevel(self.master)
             WindowPopUpMessage(new_win, 'Advertencia', 'Debe ejecutar el pronóstico antes'
                                                        ' de exportar la información.',
