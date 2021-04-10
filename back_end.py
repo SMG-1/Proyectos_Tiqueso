@@ -10,6 +10,11 @@ import numpy as np
 import pandas as pd
 import pmdarima as pm
 
+from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl import Workbook
+
 pd.options.mode.chained_assignment = None
 
 plt.style.use('ggplot')
@@ -19,6 +24,74 @@ def generate_testing_data():
     # generar data de prueba
     data = pd.DataFrame(np.random.randint(10, size=(100,)))
     return data
+
+
+def get_excel_style(row, col):
+    """ Convert given row and column number to an Excel-style cell name. """
+
+    LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+    result = []
+    while col:
+        col, rem = divmod(col - 1, 26)
+        result[:0] = LETTERS[rem]
+    return ''.join(result) + str(row)
+
+
+def create_excel_table_from_df(df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, table_name):
+    """Crea tabla de Excel en la hoja indicada a partir de un pandas DataFrame.
+
+    Parametros:
+    df: pandas DataFrame
+    row_ini: fila inicial, por default 1
+    sheet_: Worksheet object openpyxl
+    table_name: nombre de la tabla"""
+
+    col_last = get_excel_style(1, df.shape[1])[:-1]
+
+    # Crear tabla de Excel
+    tabla_excel = Table(displayName=table_name,
+                        ref=f"A{row_ini}:{col_last}{df.shape[0] + row_ini}")  # nombre y tamaño
+
+    # declarar estilos a la tabla
+    style = TableStyleInfo(name="TableStyleMedium2", showRowStripes=False)
+
+    # asignar el estilo
+    tabla_excel.tableStyleInfo = style
+
+    # agregar tabla a la hoja
+    sheet_.add_table(tabla_excel)
+
+
+def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, as_table: False, **kwargs):
+    """Agregar pandas DataFrame a hoja de Excel.
+
+    Parametros:
+    df: pandas DataFrame
+    sheet_: Worksheet object openpyxl
+    row_ini: fila inicial, por default 1
+    as_table: boolean, crear Tabla de Excel"""
+
+    # Agregar dataframe de Python a Excel
+    rows = dataframe_to_rows(df, index=False, header=True)
+
+    # agregar filas a Excel
+    for r_idx, row in enumerate(rows, row_ini):
+        for c_idx, value in enumerate(row, 1):
+            sheet_.cell(row=r_idx, column=c_idx, value=value)
+
+    if as_table:
+        try:
+            table_name = kwargs['table_name']
+            create_excel_table_from_df(df, sheet_, row_ini, table_name)
+        except KeyError:
+            raise ValueError('A table name must be specified if as_table is True.')
+    try:
+        for sheet in ['Sheet', 'Hoja', 'Hoja1']:
+            wb.remove(wb[sheet])
+
+    except KeyError:
+        pass
 
 
 class FilePathShelf:
@@ -40,6 +113,8 @@ class FilePathShelf:
                              'Demand',
                              'Forecast',
                              'BOM',
+                             'Metrics_Demand',
+                             'Metrics_Forecast',
                              'Temp']
 
         # try to get value from key, if empty initialize
@@ -418,6 +493,8 @@ class Application:
         # save df as a class attribute
         self.raw_data = df
 
+        return df
+
     def apply_bom(self):
         """Convert the final product demand to its base components using a BOM (Bill of materials)."""
 
@@ -507,23 +584,38 @@ class Application:
         # return dataset
         self.raw_data = demand_bom
 
+    def create_metrics_df(self, df_demand:pd.DataFrame, df_fcst:pd.DataFrame):
+
+        df = pd.DataFrame()
+
+        # Todo:
+        # en funcion create metrics
+        # 1. agrupar pronostico para quitar canal
+        # 2. Unir por fecha codigo
+        # 3. Devolver un df con cols: [Fecha, Cod, Desc, Cant]
+
+        return df
+
     def create_segmented_data(self, process_: str):
         """Separate the raw data into N datasets, where N is the number of unique products in the raw data."""
 
-        print("Creating separate datasets.")  # todo: temporary
+        # print("Creating separate datasets.")  # todo: temporary
 
-        # Clean data upon function call
-        self.clean_data(process_)
+        # Clean data upon function call, must read and clean two files
+        if process_ == 'Metrics':
+            df_metrics_demand = self.clean_data('Metrics_Demand')
+            df_metrics_fcst = self.clean_data('Metrics_Forecast')
+            df = self.create_metrics_df(df_metrics_demand, df_metrics_fcst)
 
-        # if bom_explosion is True, apply the BOM Explosion to the raw data
+        else:
+            df = self.clean_data(process_)
+
+        # If bom_explosion is True, apply the BOM Explosion to the raw data
         if self.config_shelf.send_parameter('BOM_Explosion') and process_ == 'Demand':
             self.apply_bom()
 
         # variable to set the unique values
         var_name = 'Nombre'
-
-        # create copy to be able to modify the dataset
-        df = copy.deepcopy(self.raw_data)
 
         # get all the unique product codes
         unique_codes = [code for code in df.loc[:, 'Codigo'].unique()]
@@ -764,14 +856,25 @@ class Application:
 
             df_export = pd.concat([df_export, df], axis=0)
 
+        df_export['Pronóstico'] = df_export['Pronóstico'].round(2)
+
         if process == 'Forecast':
             col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
             df_export = df_export[col_order]
 
         if extension == '.xlsx':
-            df_export.to_excel(os.path.join(path, file_name),
-                               sheet_name='Pronostico',
-                               index=False)
+
+            wb = Workbook()
+            sheet = wb.create_sheet('Pronóstico')
+
+            df_to_excel(wb, df_export, sheet, 1, as_table=True, table_name='Pronóstico')
+
+            wb.save(os.path.join(path, file_name))
+            wb.close()
+
+            # df_export.to_excel(os.path.join(path, file_name),
+            #                    sheet_name='Pronostico',
+            #                    index=False)
 
         elif extension == '.csv':
             df_export.to_csv(os.path.join(path, file_name),
