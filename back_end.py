@@ -412,12 +412,14 @@ class Application:
         # Get Demand path from parameters shelf
         path = self.file_paths_shelf.send_path(process_)
 
+        mapping = {'Demand': 'demanda',
+                   'Forecast': 'pronóstico',
+                   'Metrics_Demand': 'demanda',
+                   'Metrics_Forecast': 'pronóstico'}
+
         # raise value error if the key is empty
         if path == '':
-            if process_ == 'Demand':
-                err = "El directorio hacia el archivo de demanda no esta definido."
-            else:
-                err = "El directorio hacia el archivo de pronóstico no esta definido."
+            err = f"El directorio hacia el archivo de {mapping[process_]} no esta definido."
             raise KeyError(err)
 
         # if file ends with CSV, read as CSV
@@ -443,29 +445,42 @@ class Application:
         # read the data
         df = self.read_data(process_)
 
-        if df.shape[1] != 4:
-            if process_ == 'Demand':
-                raise ValueError('El archivo de demanda indicado tiene una estructura incorrecta.\n'
-                                 'Se requieren cuatro columnas Fecha-Codigo-Nombre-Demanda.\n'
-                                 f'El archivo cargado tiene {df.shape[1]} columnas.')
-            else:
-                raise ValueError('El archivo de demanda indicado tiene una estructura incorrecta.\n'
-                                 'Se requieren cuatro columnas Fecha-Codigo-Nombre-Pronóstico.\n'
-                                 f'El archivo cargado tiene {df.shape[1]} columnas.')
+        # Dictionary for each process, each process has a list with two items
+        # First item is the name to be displayed in the error message
+        # Second item in the list is the expected amount of columns
+        mapping = {'Demand': ['Demanda', 'Demanda', 4],
+                   'Forecast': ['Pronóstico', 'Pronóstico', 4],
+                   'Metrics_Demand': ['Demanda', 'Demanda', 4],
+                   'Metrics_Forecast': ['Pronóstico', 'Grupo-Pronóstico', 5]}
 
-        if process_ == 'Demand':
-            # rename columns with dictionary
-            mapping = {df.columns[0]: 'Fecha',
-                       df.columns[1]: 'Codigo',
-                       df.columns[2]: 'Nombre',
-                       df.columns[-1]: 'Demanda'}
+        if df.shape[1] != mapping[process_][2]:
+            raise ValueError(f'El archivo de {mapping[process_][0]} indicado tiene una estructura incorrecta.\n'
+                             f'Se requieren cuatro columnas Fecha-Codigo-Nombre-{mapping[process_][1]}.\n'
+                             f'El archivo cargado tiene {df.shape[2]} columnas.')
+
+        # Dictionary for each process
+        # The item is another dictionary with the column mapping for each process
+        col_mapping = {'Demand': ['Fecha',
+                                  'Codigo',
+                                  'Nombre',
+                                  'Demanda'],
+                       'Forecast': ['Fecha',
+                                    'Codigo',
+                                    'Nombre',
+                                    'Pronóstico'],
+                       'Metrics_Forecast': ['Fecha',
+                                            'Codigo',
+                                            'Nombre',
+                                            'Grupo',
+                                            'Pronóstico']}
+
+        # If the process is Metrics_Demand, use the same mapping as Demand
+        if process_ == 'Metrics_Demand':
+            process_cols = 'Demand'
         else:
-            mapping = {df.columns[0]: 'Fecha',
-                       df.columns[1]: 'Codigo',
-                       df.columns[2]: 'Nombre',
-                       df.columns[-1]: 'Pronóstico'}
+            process_cols = process_
 
-        df = df.rename(columns=mapping)
+        df.columns = col_mapping[process_cols]
 
         # convert first column to datetime or raise ValueError
         try:
@@ -495,7 +510,7 @@ class Application:
 
         return df
 
-    def apply_bom(self):
+    def apply_bom(self, df_demand:pd.DataFrame):
         """Convert the final product demand to its base components using a BOM (Bill of materials)."""
 
         # BOM path
@@ -505,8 +520,6 @@ class Application:
         if path_bom == '':
             err = "El directorio hacia el archivo de recetas no esta definido."
             raise KeyError(err)
-
-        df_demand = copy.deepcopy(self.raw_data)
 
         # group original demand data by selected fields
         df_demand = df_demand.groupby(['Fecha', 'Codigo', 'Nombre']).sum().reset_index()
@@ -581,29 +594,60 @@ class Application:
         demand_bom.set_index(['Fecha'], inplace=True)
         demand_bom.index = pd.DatetimeIndex(demand_bom.index)
 
-        # return dataset
         self.raw_data = demand_bom
 
-    def create_metrics_df(self, df_demand:pd.DataFrame, df_fcst:pd.DataFrame):
+        # return dataset
+        return demand_bom
 
-        df = pd.DataFrame()
+    def create_metrics_df(self, df_demand: pd.DataFrame, df_fcst: pd.DataFrame):
 
-        # Todo:
-        # en funcion create metrics
-        # 1. agrupar pronostico para quitar canal
-        # 2. Unir por fecha codigo
-        # 3. Devolver un df con cols: [Fecha, Cod, Desc, Cant]
+        # Agrupar pronostico por fecha, codigo, nombre
+        df_fcst = df_fcst.groupby(['Fecha', 'Codigo', 'Nombre'])['Pronóstico'].sum().reset_index()
+
+        # Create table of codes and names in case names dont match
+        df_demand_names = df_demand[['Codigo', 'Nombre']]
+        df_fcst_names = df_fcst[['Codigo', 'Nombre']]
+        df_names = pd.concat([df_demand_names, df_fcst_names])
+        df_names.drop_duplicates(subset=['Codigo'], keep='first', inplace=True)
+
+        # Unir demanda y pronostico
+        df_demand.drop(columns=['Nombre'], inplace=True)
+        df_fcst.drop(columns=['Nombre'], inplace=True)
+        df = df_demand.merge(df_fcst, on=['Fecha', 'Codigo'], how='outer')
+
+        # Agregar nombre
+        df = df.merge(df_names, on='Codigo', how='left')
+
+        # Cambiar orden de columnas
+        df = df[['Fecha',
+                 'Codigo',
+                 'Nombre',
+                 'Demanda',
+                 'Pronóstico']]
+
+        # Fill NaN values
+        for col in ['Demanda', 'Pronóstico']:
+            df[col] = df[col].fillna(0)
+
+        # Calculate the forecast error
+        df['Error'] = df['Pronóstico'] - df['Demanda']
+
+        # set date as index
+        df.set_index(['Fecha'], inplace=True)
+        df.index = pd.DatetimeIndex(df.index)
+
+        # return dataset
+        self.raw_data = df
 
         return df
 
     def create_segmented_data(self, process_: str):
         """Separate the raw data into N datasets, where N is the number of unique products in the raw data."""
 
-        # print("Creating separate datasets.")  # todo: temporary
-
         # Clean data upon function call, must read and clean two files
         if process_ == 'Metrics':
             df_metrics_demand = self.clean_data('Metrics_Demand')
+            df_metrics_demand = self.apply_bom(df_metrics_demand)
             df_metrics_fcst = self.clean_data('Metrics_Forecast')
             df = self.create_metrics_df(df_metrics_demand, df_metrics_fcst)
 
@@ -612,7 +656,7 @@ class Application:
 
         # If bom_explosion is True, apply the BOM Explosion to the raw data
         if self.config_shelf.send_parameter('BOM_Explosion') and process_ == 'Demand':
-            self.apply_bom()
+            df = self.apply_bom(df)
 
         # variable to set the unique values
         var_name = 'Nombre'
