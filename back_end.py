@@ -140,7 +140,7 @@ class FilePathShelf:
         paths_shelf = self.open_shelf()
 
         if file_name not in self._shelve_keys:
-            raise ValueError(f'You tried to save {path_} to the dictionary. '
+            raise ValueError(f'You tried to save {file_name} to the dictionary. '
                              f'The accepted values are {self._shelve_keys}.')
 
         # set value to key
@@ -199,6 +199,7 @@ class ConfigShelf:
                             'Mode': 'Demand',
                             'File_name': 'Pronóstico',
                             'File_name_segmented': 'Pronóstico segmentado',
+                            'File_name_metrics': 'Métricas',
                             'Agg_viz': 'Diario',
                             'BOM_Explosion': False,
                             'Segmentacion': {'Supermercados': 0.4,
@@ -510,7 +511,7 @@ class Application:
 
         return df
 
-    def apply_bom(self, df_demand:pd.DataFrame):
+    def apply_bom(self, df_demand: pd.DataFrame):
         """Convert the final product demand to its base components using a BOM (Bill of materials)."""
 
         # BOM path
@@ -853,16 +854,22 @@ class Application:
         print('Exportando.')
         file_name = file_name + extension
 
-        col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
+        if process in ['Demand', 'Model']:
+            col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
 
-        if self.dict_fitted_dfs == {} and (process == 'Demand' or process == 'Model'):
-            dict_export = dict(self.dict_fitted_dfs)
+        elif process == 'Forecast':
+            col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
+
+        else:
+            col_order = ['Fecha', 'Codigo', 'Nombre', 'Demanda', 'Pronóstico', 'Error']
+
+        if process == 'Demand':
+            if self.dict_fitted_dfs == {}:
+                raise ValueError('The model has to be trained first.')
+            else:
+                dict_export = dict(self.dict_fitted_dfs)
         else:
             dict_export = dict(self.segmented_data_sets)
-
-        # check if model ran
-        if dict_export == {}:
-            raise ValueError('The model has to be trained first.')
 
         df_export = pd.DataFrame()
         for sku, df in dict_export.items():
@@ -871,19 +878,20 @@ class Application:
             if sku == 'Total':
                 continue
 
+            # Assign code and name based on dictionary keys
             df['Codigo'] = self.product_dict[sku]
             df['Nombre'] = sku
 
-            # keep only rows with the forecast, drop original data
+            # Reset the index to get the date
             df = df.reset_index()
-            df = df[df['Pronóstico'].notnull()]
-            df = df.iloc[1:, :]
+
+            # keep only rows with the forecast, drop original data
+            if process == 'Demand':
+                df = df[df['Pronóstico'].notnull()]
+                df = df.iloc[1:, :]
 
             # format date
             df['Fecha'] = df['Fecha'].dt.date
-
-            # change column order
-            df = df[col_order]
 
             # if process is Forecast, the loaded forecast must be divided into subgroups
             # for each key in the segment dictionary, a new forecast must be calculated
@@ -898,13 +906,26 @@ class Application:
 
                 df = pd.DataFrame(df_segmented)
 
+            # change column order
+            df = df[col_order]
+
             df_export = pd.concat([df_export, df], axis=0)
+
+        if process == 'Metrics':
+
+            mean_demand = df_export['Demanda'].mean()
+
+            bias = df_export['Error'].mean()
+            bias_perc = bias/mean_demand
+
+            df_export['Error_Abs'] = df_export['Error'].abs()
+            mae = df_export['Error_Abs'].mean()
+            mae_perc = mae/mean_demand
+
 
         df_export['Pronóstico'] = df_export['Pronóstico'].round(2)
 
-        if process == 'Forecast':
-            col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
-            df_export = df_export[col_order]
+        df_export = df_export[col_order]
 
         if extension == '.xlsx':
 
@@ -912,6 +933,20 @@ class Application:
             sheet = wb.create_sheet('Pronóstico')
 
             df_to_excel(wb, df_export, sheet, 1, as_table=True, table_name='Pronóstico')
+
+            if process == 'Metrics':
+                metrics_sheet = wb.create_sheet('Metricas')
+                metrics_sheet['A1'] = 'Métrica'
+                metrics_sheet['B1'] = 'Valor'
+
+                metrics_sheet['A2'] = 'Sesgo'
+                metrics_sheet['B2'] = bias
+                metrics_sheet['A3'] = 'Sesgo Porcentual'
+                metrics_sheet['B3'] = bias_perc
+                metrics_sheet['A4'] = 'MAE'
+                metrics_sheet['B4'] = mae
+                metrics_sheet['A5'] = 'MAE'
+                metrics_sheet['B6'] = mae_perc
 
             wb.save(os.path.join(path, file_name))
             wb.close()
