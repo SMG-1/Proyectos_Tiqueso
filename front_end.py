@@ -84,7 +84,7 @@ class Main:
         self.screen_width = GetSystemMetrics(0)
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
-        self.height = self.screen_height # - 100
+        self.height = self.screen_height  # - 100
 
         # top and bottom frame heights
         self.top_frame_height = int(self.height / 2.5)
@@ -119,40 +119,48 @@ class Main:
         self.model_plot = None
         self.pd_table = None
         self.model_ready = False
-        self.active_process = 'Demand'
+        self.active_process = self.back_end.get_parameter('Mode')
 
         # --- DROPDOWN MENU DECLARATION - TOOLBAR ---
-        main_menu = Menu(self.master)
+        self.main_menu = Menu(self.master)
 
         # sub menu declarations
-        sub_menu_file = Menu(main_menu, tearoff=False)
-        sub_menu_config = Menu(main_menu, tearoff=False)
-        sub_menu_model = Menu(main_menu, tearoff=False)
+        self.sub_menu_file = Menu(self.main_menu, tearoff=False)
+        self.sub_menu_config = Menu(self.main_menu, tearoff=False)
+        self.sub_menu_model = Menu(self.main_menu, tearoff=False)
 
         # commands for the file sub menu
-        sub_menu_file.add_command(label="Cambiar directorios")
-        sub_menu_file.add_command(label="Cargar información",
-                                  command=self.open_window_select_work_path)
-        sub_menu_file.add_command(label='Exportar',
-                                  # command=self.open_window_export) # todo: temporary
-                                  command=self.open_window_segment)
+        self.sub_menu_file.add_command(label="Nuevo",
+                                       command=self.clear_gui)
+        self.sub_menu_file.add_command(label="Abrir",
+                                       command=self.open_window_select_work_path)
+        self.sub_menu_file.add_command(label='Exportar',
+                                       command=self.open_window_export)
 
         # commands for the config sub menu
-        sub_menu_config.add_command(label='Segmentación',
-                                    command=self.open_window_segment, )
-        # state='disabled')
+        self.sub_menu_config.add_command(label='Segmentación',
+                                         command=self.open_window_segment)
+        if self.active_process == 'Forecast':
+            self.sub_menu_config.entryconfig('Segmentación',
+                                             state='normal')
+        else:
+            self.sub_menu_config.entryconfig('Segmentación',
+                                             state='disabled')
 
         # commands for the model sub menu
-        sub_menu_model.add_command(label='Optimizar modelo',
-                                   command=self.run_optimizer)
+        self.sub_menu_model.add_command(label='Optimizar modelo',
+                                        command=self.run_optimizer)
 
         # sub menu cascade
-        main_menu.add_cascade(label='Archivo', menu=sub_menu_file)
-        main_menu.add_cascade(label='Configuración', menu=sub_menu_config)
-        main_menu.add_cascade(label='Modelo', menu=sub_menu_model)
+        self.main_menu.add_cascade(label='Archivo',
+                                   menu=self.sub_menu_file)
+        self.main_menu.add_cascade(label='Configuración',
+                                   menu=self.sub_menu_config)
+        self.main_menu.add_cascade(label='Modelo',
+                                   menu=self.sub_menu_model)
 
         # configure menu in toplevel
-        self.master.config(menu=main_menu)
+        self.master.config(menu=self.main_menu)
 
         # --- Level 0 --- Contains the Paned Window, the Tree View and the Main Frame
 
@@ -162,37 +170,72 @@ class Main:
 
         # Button for a new template
         self.img_new = PhotoImage(file=r"C:\icons\new.png")
-        self.btn_new = Button(self.button_control_frame, text='Nuevo', image=self.img_new, compound='left',
-                              bg=bg_color, width=75, padx=10, command=self.clear_gui)
+        self.btn_new = Button(self.button_control_frame,
+                              text='Nuevo',
+                              image=self.img_new,
+                              compound='left',
+                              bg=bg_color,
+                              width=75,
+                              padx=10,
+                              command=self.clear_gui)
         self.btn_new.pack(side=LEFT)
 
         # Button to open a file
         self.img_open = PhotoImage(file=r"C:\icons\open.png")
-        self.btn_open = Button(self.button_control_frame, text='Abrir', image=self.img_open, compound='left',
-                               bg=bg_color, width=75, padx=10, command=self.open_window_select_work_path)
+        self.btn_open = Button(self.button_control_frame,
+                               text='Abrir',
+                               image=self.img_open,
+                               compound='left',
+                               bg=bg_color,
+                               width=75,
+                               padx=10,
+                               command=self.open_window_select_work_path)
         self.btn_open.pack(side=LEFT)
 
         # Button to export files
+        if self.mode == '':
+            btn_save_state = 'disabled'
+        else:
+            btn_save_state = 'normal'
         self.img_save = PhotoImage(file=r"C:\icons\save.png")
-        self.btn_save = Button(self.button_control_frame, text='Exportar', image=self.img_save, compound='left',
-                               bg=bg_color, width=75, padx=10, command=self.open_window_export)
+        self.btn_save = Button(self.button_control_frame,
+                               text='Exportar',
+                               image=self.img_save,
+                               compound='left',
+                               bg=bg_color,
+                               width=75,
+                               padx=10,
+                               command=self.open_window_export,
+                               state=btn_save_state)
         self.btn_save.pack(side=LEFT)
 
         # Button to refresh the views
         self.img_refresh = PhotoImage(file=r"C:\icons\refresh.png")
-        self.btn_refresh = Button(self.button_control_frame, text='Refrescar', image=self.img_refresh, compound='left',
-                                  bg=bg_color, width=75, padx=10, command=lambda: self.refresh_views(0))
+        self.btn_refresh = Button(self.button_control_frame,
+                                  text='Refrescar',
+                                  image=self.img_refresh,
+                                  compound='left',
+                                  bg=bg_color,
+                                  width=75,
+                                  padx=10,
+                                  command=lambda: self.refresh_views(0))
         self.btn_refresh.pack(side=LEFT)
 
         # Button to run a process
-        self.img_run = PhotoImage(file=r"C:\icons\run.png")
-
         if self.mode in ['Demand', 'Model']:
             btn_run_state = 'normal'
         else:
             btn_run_state = 'disabled'
-        self.btn_run = Button(self.button_control_frame, text='Ejecutar', image=self.img_run, compound='left',
-                              bg=bg_color, width=75, padx=10, command=self.run_optimizer, state=btn_run_state)
+        self.img_run = PhotoImage(file=r"C:\icons\run.png")
+        self.btn_run = Button(self.button_control_frame,
+                              text='Ejecutar',
+                              image=self.img_run,
+                              compound='left',
+                              bg=bg_color,
+                              width=75,
+                              padx=10,
+                              command=self.run_optimizer,
+                              state=btn_run_state)
         self.btn_run.pack(side=LEFT)
 
         # Horizon Label
@@ -318,7 +361,7 @@ class Main:
         #                               width=self.config_width,
         #                               height=self.bottom_frame_height,
         #                               bg=bg_color)
-        #self.frame_config.pack(fill='both', expand=True, side=RIGHT)
+        # self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- Level 3 --- Time Granularity Combobox, N Periods Entry, Refresh Views Button
 
@@ -349,15 +392,11 @@ class Main:
 
     def populate_tree(self, item_list):
         """
-        Insert row for every item in the list.
-        Bind the double click action to the refresh_views function."""
+        Insert row for every item in the list."""
 
-        # populate the tree view with the items inside the item_list
+        # Populate the tree view with the items inside the item_list
         for i in item_list:
             self.tree_view.insert("", "end", text=i, values=(i,))
-
-        # bind the refresh_views function to a double click on the tree view
-        self.tree_view.bind("<Double-1>", self.refresh_views)
 
     def clear_tree(self):
         """Clear information from the tree view."""
@@ -383,6 +422,11 @@ class Main:
         # Disable the model tabs
         self.notebook_plotting.tab(self.tab_model_plot, state='disabled')
         self.notebook_plotting.tab(self.tab_metrics, state='disabled')
+
+        # Disable the Export, Refresh and Run buttons
+        self.btn_save.config(state='disabled')
+        self.btn_refresh.config(state='disabled')
+        self.btn_run.config(state='disabled')
 
         # Clear information from the tree view
         self.clear_tree()
@@ -594,9 +638,13 @@ class Main:
         # update the periods_fwd parameter in the back end
         self.update_periods_fwd()
 
-        # spawn the thread which finds the best model
-        # uses a thread to avoid freezing the program
-        self.spawn_thread('Optimizador')
+        # Open confirmation pop up window.
+        operation_canceled = self.open_window_training_confirmation()
+
+        if operation_canceled is False:
+            # spawn the thread which finds the best model
+            # uses a thread to avoid freezing the program
+            self.spawn_thread('Optimizador')
 
     def spawn_thread(self, process):
         """Create ThreadedClient class and pass it to a periodic call function."""
@@ -726,6 +774,17 @@ class Main:
         else:
             self.btn_run['state'] = 'disabled'
 
+        # Enable save, refresh buttons
+        self.btn_save['state'] = 'normal'
+        self.btn_refresh['state'] = 'normal'
+
+        if process_ == 'Forecast':
+            self.sub_menu_config.entryconfig('Segmentación',
+                                             state='normal')
+        else:
+            self.sub_menu_config.entryconfig('Segmentación',
+                                             state='disabled')
+
         try:
             # the path to the data has been validated, so the data can be separated into several datasets
             # process must be specified to read the correct filepath
@@ -751,16 +810,15 @@ class Main:
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
 
-        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
-        # this window is closed
-
+        # Declare a new Toplevel
+        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
         self.new_win = Toplevel(self.master)
         win_obj = WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
-        if win_obj.carga_exitosa:
-            print('Carga exitosa.')
+        # If the files were loaded successfully, run this block.
+        if win_obj.successful_load:
 
             # If the user loads new data, a new model must be trained.
             if self.model_ready:
@@ -768,24 +826,66 @@ class Main:
                 self.notebook_plotting.add(self.tab_model_plot, state='disabled')
                 self.notebook_plotting.add(self.tab_metrics, state='disabled')
 
-        # update the GUI, the layout changes based on the process
-        self.active_process = win_obj.process
-        self.update_gui(win_obj.process)
+            # The process attribute of win_obj indicates the process that was chosen by the user.
+            # The GUI is updated differently for each process.
+            self.active_process = win_obj.process
+            self.update_gui(win_obj.process)
+
+        # If the load wasn't successful, keep the previous GUI state.
+        else:
+            pass
+
+        # If the operation was canceled, keep the previous GUI state.
+        if win_obj.canceled:
+            pass
 
     def open_window_export(self):
+        """Open TopLevel to export files to selected locations."""
 
+        # Get the active process from the backend.
         process_ = self.back_end.config_shelf.send_parameter('Mode')
 
+        # Declare Toplevel and a WindowExportFile class instance.
+        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
         self.new_win = Toplevel(self.master)
-        WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height, process_)
+
+        if process_ in ['Demand', 'Model'] and self.model_ready is False:
+            warning = 'El modelo se debe entrenar antes de exportar la información.'
+            WindowPopUpMessage(self.new_win, 'Alerta', warning, self.screen_width, self.screen_height)
+
+        else:
+            WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height, process_)
+
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
     def open_window_segment(self):
+        """Open TopLevel to configure the forecast segmentation."""
+
+        # Declare Toplevel and a WindowSegmentOptions class instance.
+        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
         self.new_win = Toplevel(self.master)
         WindowSegmentOptions(self.new_win, self.back_end, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
+    def open_window_training_confirmation(self):
+        """Open TopLevel to configure the forecast segmentation."""
+
+        # Declare Toplevel and a WindowSegmentOptions class instance.
+        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
+        self.new_win = Toplevel(self.master)
+        warning = 'El entrenamiento de los modelos puede ser un proceso extenso.\n ¿Desea continuar?'
+        win_obj = WindowPopUpMessageWithCancel(self.new_win,
+                                               'Alerta',
+                                               warning,
+                                               self.screen_width,
+                                               self.screen_height)
+
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        return win_obj.canceled
 
 
 class WindowSelectWorkPath:
@@ -800,7 +900,8 @@ class WindowSelectWorkPath:
         self.height = self.screen_height / 5
         self.app = app
         self.new_win = None
-        self.carga_exitosa = False
+        self.successful_load = False
+        self.canceled = False
         self.process = None
 
         self.last_process = self.app.config_shelf.send_parameter('Mode')
@@ -1056,18 +1157,19 @@ class WindowSelectWorkPath:
         # call function to open a file selection window
         filepath, filename = browse_files_master(ini_dir_)
 
-        # set the selected path as the new Temp path
-        self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
-
         # change the text content of the label
-        if label_name == 'Level_1':
-            self.lbl_path.configure(text=filename)
+        if filename != '':
+            # set the selected path as the new Temp path
+            self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
 
-        elif label_name == 'Level_2':
-            self.lbl_second_path.configure(text=filename)
+            if label_name == 'Level_1':
+                self.lbl_path.configure(text=filename)
 
-        elif label_name == 'Level_3':
-            self.lbl_third_path.configure(text=filename)
+            elif label_name == 'Level_2':
+                self.lbl_second_path.configure(text=filename)
+
+            elif label_name == 'Level_3':
+                self.lbl_third_path.configure(text=filename)
 
     def save_selection(self):
         """"""
@@ -1125,7 +1227,7 @@ class WindowSelectWorkPath:
         try:
             self.app.create_segmented_data(process)
             self.open_window_pop_up('Mensaje', 'Archivos cargados.')
-            self.carga_exitosa = True
+            self.successful_load = True
             self.app.set_parameter('Mode', process)
             self.close_window()
 
@@ -1190,6 +1292,7 @@ class WindowSelectWorkPath:
         self.master.wait_window(self.new_win)
 
     def close_window(self):
+        self.canceled = True
         self.master.destroy()
 
 
@@ -1354,6 +1457,8 @@ class WindowSegmentOptions:
         sv_values = [float(var.get()) if var.get() != "" else 0 for var in self.string_vars]
         self.lbl_total_val['text'] = round(sum(sv_values), 2)
 
+        return round(sum(sv_values), 2)
+
     def callback(self, *args):
         """
         Each time a value Entry is changed, this function is called.
@@ -1397,16 +1502,19 @@ class WindowSegmentOptions:
 
     def save_selection(self):
 
+        groups = [entry.get() for entry in self.entries_groups]
+        sv_values = [float(var.get()) / 100 if var.get() != "" else 0 for var in self.string_vars]
+
         # If there are duplicated groups, show an error on a pop up window
-        if len([item for item, count in collections.Counter(self.groups).items() if count > 1]) > 0:
+        if len([item for item, count in collections.Counter(groups).items() if count > 1]) > 0:
             self.open_window_pop_up('Error', 'No puede haber grupos duplicados.')
 
         # If the total isn't 1, show an Error on a pop up window.
-        elif round(sum(self.values), 2) != 1:
+        elif int(self.calc_sv_sum()) != 100:
             self.open_window_pop_up('Error', 'El total debe sumar 100.')
 
         else:
-            new_dict = dict(zip(self.groups, self.values))
+            new_dict = dict(zip(groups, sv_values))
 
             self.app.set_parameter('Segmentacion', new_dict)
 
@@ -1452,6 +1560,52 @@ class WindowPopUpMessage:
         center_window(self.master, self.screen_width_, self.screen_height_)
 
     def close_window(self):
+        self.master.destroy()
+
+
+class WindowPopUpMessageWithCancel:
+    def __init__(self, master, title: str, message: str, screen_width_, screen_height_):
+        self.master = master
+        self.master.title(title)
+        self.master.configure(background=bg_color)
+        self.screen_width_ = screen_width_
+        self.screen_height_ = screen_height_
+        self.width = self.screen_width_ / 5
+        self.height = self.screen_height_ / 4
+        self.canceled = True
+
+        # --- NIVEL 0 ---
+
+        # Label para desplegar el mensaje
+        self.message = Label(self.master,
+                             text=message,
+                             bg=bg_color,
+                             padx=100,
+                             pady=50,
+                             font=("Calibri Light", 12))
+        self.message.pack()
+
+        # Boton para aceptar y cerrar
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=lambda: self.close_window('Aceptar'))
+        self.btn_accept.pack(padx=10, pady=10)
+
+        # Boton para aceptar y cerrar
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=lambda: self.close_window('Cancelar'))
+        self.btn_cancel.pack(padx=10, pady=10)
+
+        center_window(self.master, self.screen_width_, self.screen_height_)
+
+    def close_window(self, canceled):
+
+        if canceled == 'Cancelar':
+            self.canceled = True
+        else:
+            self.canceled = False
+
         self.master.destroy()
 
 
@@ -1678,7 +1832,7 @@ class WindowExportFile:
         try:
             self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_, self.process)
             new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win, 'Mensaje', 'Archivo exportado.', self.width, self.height)
+            WindowPopUpMessage(new_win, 'Mensaje', 'Archivo exportado.', self.screen_width, self.screen_height)
             new_win.grab_set()
             self.master.wait_window(new_win)
 
@@ -1731,8 +1885,9 @@ class WindowExportFile:
         filename = filedialog.askdirectory(initialdir=self.app.file_paths_shelf.send_path('Working'),
                                            title="Seleccione un folder de destino.")
 
-        # Change label contents
-        self.btn_path.configure(text=filename)
+        if filename != '':
+            # Change label contents
+            self.btn_path.configure(text=filename)
 
 
 class ThreadedClient(threading.Thread):
