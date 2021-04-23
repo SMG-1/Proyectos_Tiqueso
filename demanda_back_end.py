@@ -1,4 +1,4 @@
-# back_end.py - Backend para leer datos históricos, ejecutar pronósticos, calcular errores, mostrar gráficos y
+# demanda_back_end.py - Backend para leer datos históricos, ejecutar pronósticos, calcular errores, mostrar gráficos y
 #                comparar entre modelos.
 import copy
 import datetime
