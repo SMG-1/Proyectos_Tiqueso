@@ -1,3 +1,4 @@
+import datetime
 import tkinter as tk
 from tkinter import filedialog
 from tkinter import ttk
@@ -114,6 +115,14 @@ class Main:
         self.btn_search.pack(padx=5,
                              pady=10)
 
+        # Button - Config
+        self.btn_config = tk.Button(self.config_frame,
+                                    bg=bg_color,
+                                    text='Configuración',
+                                    command=self.run_anomaly_check)
+        self.btn_config.pack(padx=5,
+                             pady=10)
+
         # Button - Export result
         self.btn_export = tk.Button(self.config_frame,
                                     bg=bg_color,
@@ -124,16 +133,19 @@ class Main:
         center_window(self.master, self.screen_width, self.screen_height)
 
     def open_window_select_path(self):
-
         self.new_win = tk.Toplevel()
         WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
+    def open_window_config(self):
+        self.new_win = tk.Toplevel()
+        # WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
     def run_anomaly_check(self):
-
         self.app.create_verification_table()
-
 
 
 class WindowSelectWorkPath:
@@ -152,6 +164,183 @@ class WindowSelectWorkPath:
         self.canceled = False
 
         # --- LEVEL 0 ---
+        self.paths_frame = tk.LabelFrame(self.master,
+                                         text='Escoja un directorio:',
+                                         bg=bg_color,
+                                         width=screen_width_ / 5,
+                                         padx=10,
+                                         pady=10)
+        self.paths_frame.grid(padx=10,
+                              pady=10,
+                              row=0,
+                              column=0,
+                              columnspan=2)
+
+        # accept and cancel buttons
+        self.btn_accept = tk.Button(self.master,
+                                    text='Aceptar',
+                                    command=self.save_selection)
+        self.btn_accept.grid(pady=10, row=1, column=0)
+
+        self.btn_cancel = tk.Button(self.master,
+                                    text='Cancelar',
+                                    command=self.close_window)
+        self.btn_cancel.grid(pady=10, row=1, column=1)
+
+        # --- LEVEL 1 ---
+
+        # Paths Frame
+
+        #  ROW 0: LABEL THAT SHOWS THE PATH
+        # Name Label, first column
+        self.lbl_name_path = tk.Label(self.paths_frame,
+                                      text='Directorio',
+                                      bg=bg_color,
+                                      padx=5)
+
+        # Name Label, first column
+        self.lbl_name_path.grid(row=0,
+                                column=0,
+                                sticky='W')
+
+        # Path Label, second column
+        path = self.app.get_path('Orders')
+        self.lbl_path = tk.Label(self.paths_frame,
+                                 text=path,
+                                 bg=bg_color,
+                                 pady=10,
+                                 borderwidth=2,
+                                 width=150,
+                                 relief="groove",
+                                 anchor='w')
+
+        # Path Label, second column
+        self.lbl_path.grid(row=0,
+                           column=1,
+                           padx=10,
+                           pady=10,
+                           sticky='WE')
+
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse = tk.Button(self.paths_frame,
+                                    text='...',
+                                    command=lambda: self.browse_files('Level_1'))
+
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse.grid(row=0,
+                             column=2,
+                             padx=10,
+                             pady=10,
+                             sticky='WE')
+
+        center_window(self.master, self.screen_width, self.screen_height)
+
+    def browse_files(self, label_name):
+
+        # get the last path that the user selected
+        ini_dir_ = self.app.get_path('Temp')
+
+        # call function to open a file selection window
+        filepath, filename = browse_files_master(ini_dir_)
+
+        # change the text content of the label
+        if filename != '':
+            # set the selected path as the new Temp path
+            self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
+
+            self.lbl_path.configure(text=filename)
+
+    def save_selection(self):
+        """"""
+
+        # open PopUp warning if the Path Label is empty
+        if self.lbl_path['text'] == '':
+            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
+
+        path = self.lbl_path['text']
+        if validate_path(path, is_file=True):
+            self.app.set_path('Orders', path)
+
+        else:
+            self.open_window_pop_up('Error',
+                                    f'El directorio al archivo de órdenes indicado es inválido.')
+
+        # create separate datasets for each of the unique products
+        try:
+            self.app.create_segmented_data(process)
+            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
+            self.successful_load = True
+            self.app.set_parameter('Mode', process)
+            self.close_window()
+
+        except ValueError as e:
+            self.open_window_pop_up('Error', e)
+
+        except PermissionError as e:
+            self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
+
+    def open_window_pop_up(self, title, msg):
+        # open new TopLevel as a popup window
+        self.new_win = tk.Toplevel(self.master)
+        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
+
+        # freeze master window until user closes the pop up
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+    def close_window(self):
+        self.canceled = True
+        self.master.destroy()
+
+
+class WindowModelConfig:
+
+    def __init__(self, master, app: AnomalyApp, screen_width_, screen_height_):
+        self.master = master
+        self.app = app
+
+        self.master.title("Configuración del modelo")
+        self.master.configure(background=bg_color)
+
+        self.screen_width = screen_width_
+        self.screen_height = screen_height_
+        self.width = self.screen_width / 2
+        self.height = self.screen_height / 5
+
+        self.new_win = None
+        self.successful_load = False
+        self.canceled = False
+
+        # --- LEVEL 0 ---
+
+        # Label - Shows the last time the model was updated.
+        last_update_date = datetime.datetime(2021, 4, 26).strftime('%d/%m/%Y')
+        self.status_label = tk.Label(self.master,
+                                     text=f'Modelo actualizado por última vez el {last_update_date}.')
+        self.status_label.pack()
+
+        # Button - Show the path to the file that will be used to update the model.
+        self.btn_update_model = tk.Button(self.master,
+                                    text='Actualizar modelo')
+        self.btn_update_model.pack()
+
+        # Label - Naming label for the path widgets
+        self.file_path_label = tk.Label(self.master,
+                                        text='Directorio:')
+        self.file_path_label.pack()
+
+        # Label - Shows the path the user selected.
+        path_model = self.app.get_path('Anomaly_Model')
+        self.lbl_path = tk.Label(self.paths_frame,
+                                 text=path_model,
+                                 bg=bg_color,
+                                 pady=10,
+                                 borderwidth=2,
+                                 width=150,
+                                 relief="groove",
+                                 anchor='w')
+        self.lbl_path.pack()
+
         self.paths_frame = tk.LabelFrame(self.master,
                                          text='Escoja un directorio:',
                                          bg=bg_color,
