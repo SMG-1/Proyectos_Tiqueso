@@ -119,7 +119,7 @@ class Main:
         self.btn_config = tk.Button(self.config_frame,
                                     bg=bg_color,
                                     text='Configuración',
-                                    command=self.run_anomaly_check)
+                                    command=self.open_window_config)
         self.btn_config.pack(padx=5,
                              pady=10)
 
@@ -140,7 +140,7 @@ class Main:
 
     def open_window_config(self):
         self.new_win = tk.Toplevel()
-        # WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
+        WindowModelConfig(self.new_win, self.app, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -317,21 +317,20 @@ class WindowModelConfig:
         last_update_date = datetime.datetime(2021, 4, 26).strftime('%d/%m/%Y')
         self.status_label = tk.Label(self.master,
                                      text=f'Modelo actualizado por última vez el {last_update_date}.')
-        self.status_label.pack()
+        self.status_label.grid(row=0, column=0, columnspan=3)
 
         # Button - Show the path to the file that will be used to update the model.
         self.btn_update_model = tk.Button(self.master,
                                     text='Actualizar modelo')
-        self.btn_update_model.pack()
+        self.btn_update_model.grid(row=1, column=1)
 
         # Label - Naming label for the path widgets
         self.file_path_label = tk.Label(self.master,
                                         text='Directorio:')
-        self.file_path_label.pack()
 
         # Label - Shows the path the user selected.
         path_model = self.app.get_path('Anomaly_Model')
-        self.lbl_path = tk.Label(self.paths_frame,
+        self.lbl_path = tk.Label(self.master,
                                  text=path_model,
                                  bg=bg_color,
                                  pady=10,
@@ -339,80 +338,33 @@ class WindowModelConfig:
                                  width=150,
                                  relief="groove",
                                  anchor='w')
-        self.lbl_path.pack()
 
-        self.paths_frame = tk.LabelFrame(self.master,
-                                         text='Escoja un directorio:',
-                                         bg=bg_color,
-                                         width=screen_width_ / 5,
-                                         padx=10,
-                                         pady=10)
-        self.paths_frame.grid(padx=10,
-                              pady=10,
-                              row=0,
-                              column=0,
-                              columnspan=2)
+        # Button,opens the browse files window
+        self.btn_browse = tk.Button(self.master,
+                                    text='...',
+                                    command=lambda: self.browse_files('Level_1'))
 
         # accept and cancel buttons
         self.btn_accept = tk.Button(self.master,
                                     text='Aceptar',
                                     command=self.save_selection)
-        self.btn_accept.grid(pady=10, row=1, column=0)
 
         self.btn_cancel = tk.Button(self.master,
                                     text='Cancelar',
                                     command=self.close_window)
-        self.btn_cancel.grid(pady=10, row=1, column=1)
-
-        # --- LEVEL 1 ---
-
-        # Paths Frame
-
-        #  ROW 0: LABEL THAT SHOWS THE PATH
-        # Name Label, first column
-        self.lbl_name_path = tk.Label(self.paths_frame,
-                                      text='Directorio',
-                                      bg=bg_color,
-                                      padx=5)
-
-        # Name Label, first column
-        self.lbl_name_path.grid(row=0,
-                                column=0,
-                                sticky='W')
-
-        # Path Label, second column
-        path = self.app.get_path('Orders')
-        self.lbl_path = tk.Label(self.paths_frame,
-                                 text=path,
-                                 bg=bg_color,
-                                 pady=10,
-                                 borderwidth=2,
-                                 width=150,
-                                 relief="groove",
-                                 anchor='w')
-
-        # Path Label, second column
-        self.lbl_path.grid(row=0,
-                           column=1,
-                           padx=10,
-                           pady=10,
-                           sticky='WE')
-
-        # Browse Button, third column, to open the browse files window
-        self.btn_browse = tk.Button(self.paths_frame,
-                                    text='...',
-                                    command=lambda: self.browse_files('Level_1'))
-
-        # Browse Button, third column, to open the browse files window
-        self.btn_browse.grid(row=0,
-                             column=2,
-                             padx=10,
-                             pady=10,
-                             sticky='WE')
 
         center_window(self.master, self.screen_width, self.screen_height)
 
-    def browse_files(self, label_name):
+    def add_path_selection_to_grid(self, row):
+
+        self.file_path_label.grid(row=row, column=0)
+        self.lbl_path.grid(row=row, column=1)
+        self.btn_browse.grid(row=row, column=2)
+
+        self.btn_accept.grid(row=row+1, column=0)
+        self.btn_cancel.grid(row=row+1, column=2)
+
+    def browse_files(self):
 
         # get the last path that the user selected
         ini_dir_ = self.app.get_path('Temp')
@@ -436,18 +388,17 @@ class WindowModelConfig:
 
         path = self.lbl_path['text']
         if validate_path(path, is_file=True):
-            self.app.set_path('Orders', path)
+            self.app.set_path('Anomaly_Model', path)
 
         else:
             self.open_window_pop_up('Error',
-                                    f'El directorio al archivo de órdenes indicado es inválido.')
+                                    f'El directorio al archivo indicado es inválido.')
 
         # create separate datasets for each of the unique products
         try:
-            self.app.create_segmented_data(process)
+            self.app.update_model()
             self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
-            self.app.set_parameter('Mode', process)
             self.close_window()
 
         except ValueError as e:
