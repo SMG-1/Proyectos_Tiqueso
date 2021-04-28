@@ -741,7 +741,7 @@ class Application:
             df_total = pd.concat([df_total, preds], axis=1)
 
             # change column names
-            df_total.columns = self.var_names
+            df_total.columns = self.var_names + ['Min', 'Max']
 
             # add the whole dataset to a dictionary with the product name as the key
             self.dict_fitted_dfs[sku] = df_total
@@ -812,14 +812,24 @@ class Application:
         pred_index = pd.date_range(start=df.index.max(),
                                    end=df.index.max() + datetime.timedelta(days=periods_fwd - 1))
 
-        # predict on OOS using the fitted model
-        predictions = fitted_model.predict(n_periods=periods_fwd)
+        # predict on OOS using the fitted model, get the base prediction and the confidence interval
+        # predictions = fitted_model.predict(n_periods=periods_fwd)
+        predictions, confidence = fitted_model.predict(n_periods=periods_fwd,
+                                           return_conf_int=True)
+
+        # add the predictions to a DataFrame using the prediction index
         predictions = pd.DataFrame(predictions, index=pred_index, columns=[self.var_names[0]])
+
+        # add the confidence interval (both bounds) to a DataFrame using the prediction index
+        confidence = pd.DataFrame(confidence, index=pred_index, columns=['Lower', 'Upper'])
 
         # allow only non-negative predictions
         predictions.loc[predictions[self.var_names[0]] < 0, self.var_names[0]] = 0
 
-        return predictions
+        # concatenate the base predictions and the confidence interval to get a three-column DataFrame
+        full_preds = pd.concat([predictions, confidence], axis=1)
+
+        return full_preds
 
     def refresh_predictions(self):
 
