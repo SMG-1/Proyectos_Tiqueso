@@ -513,11 +513,16 @@ class Main:
 
         # If the plot type is Model, use a triple axis plot.
         if plot_type == 'Model':
-            col_names = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico']
-            df.columns = col_names
-            df.plot(x=col_names[0], y=col_names[1], color='b', ax=self.ax_model)
-            df.plot(x=col_names[0], y=col_names[2], color='r', ax=self.ax_model)
-            df.plot(x=col_names[0], y=col_names[3], color='g', ax=self.ax_model)
+            col = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico', 'Min', 'Max']
+            df.columns = col
+            df.plot(x=col[0], y=col[1], color='b', ax=self.ax_model)
+            df.plot(x=col[0], y=col[2], color='r', ax=self.ax_model)
+            df.plot(x=col[0], y=col[3], color='g', ax=self.ax_model)
+            df.plot(x=col[0], y=col[4], color='g', ax=self.ax_model)
+            df.plot(x=col[0], y=col[5], color='g', ax=self.ax_model)
+
+            self.ax_model.fill_between(df[col[0]], df[col[4]], df[col[5]], alpha=0.5, facecolor='green')
+
             self.ax_model.set_ylabel('Cantidad (kg)')
             self.ax_model.set_title('Demanda Real y Pronóstico')
 
