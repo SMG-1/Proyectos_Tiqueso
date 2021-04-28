@@ -21,7 +21,7 @@ class FilePathShelf:
         # set keys list
         self._shelve_keys = ['Working',
                              'Orders',
-                             'Anomaly_Model'
+                             'Anomaly_Model',
                              'Temp']
 
         # try to get value from key, if empty initialize
@@ -194,3 +194,7 @@ class AnomalyApp:
                             'Alerta'] = 'No hay datos históricos para esta combinacíon.'
 
         return df_verification
+
+
+    def update_model(self):
+        return
