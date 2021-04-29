@@ -2,7 +2,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 path = ''
-df_ventas = pd.read_csv(r"C:\Users\smirand27701\Desktop\Varios Tiqueso\Ventas_Total.csv")
+df_ventas = pd.read_csv(r"C:\Users\Usuario\OneDrive\TESIS COPROLAC S.A\Datos Fuente\Ventas_Total.csv")
 
 try:
     df_ventas['Fecha de contabilización'] = pd.to_datetime(df_ventas['Fecha de contabilización'])
@@ -13,23 +13,23 @@ except ValueError:
 df_ventas = df_ventas.sort_values(['Nombre de cliente/proveedor', 'Fecha de contabilización'])
 
 df_ventas = df_ventas[['Código clientes SAP', 'Nombre de cliente/proveedor', 'Número de artículo',
-                       'Descripción artículo/serv.', 'Fecha de contabilización', 'Cantidad KG']]
-df_ventas.columns = ['Cliente_Cod', 'Cliente_Nombre', 'Producto_Cod', 'Producto_Nombre', 'Fecha', 'Cantidad_KG']
+                       'Descripción artículo/serv.', 'Fecha de contabilización', 'Cantidad (unidades sistema)']]
+df_ventas.columns = ['Cliente_Cod', 'Cliente_Nombre', 'Producto_Cod', 'Producto_Nombre', 'Fecha', 'Cantidad']
 
 group_cols = ['Cliente_Cod',
               'Producto_Cod']
-df_ventas_25 = df_ventas.groupby(group_cols)['Cantidad_KG'].quantile(0.05).reset_index()
-df_ventas_25 = df_ventas_25.rename(columns={'Cantidad_KG': 'Min'})
-df_ventas_75 = df_ventas.groupby(group_cols)['Cantidad_KG'].quantile(0.95).reset_index()
-df_ventas_75 = df_ventas_75.rename(columns={'Cantidad_KG': 'Max'})
+df_ventas_25 = df_ventas.groupby(group_cols)['Cantidad'].quantile(0.05).reset_index()
+df_ventas_25 = df_ventas_25.rename(columns={'Cantidad': 'Min'})
+df_ventas_75 = df_ventas.groupby(group_cols)['Cantidad'].quantile(0.95).reset_index()
+df_ventas_75 = df_ventas_75.rename(columns={'Cantidad': 'Max'})
 
 df_ventas = df_ventas.merge(df_ventas_25, on=group_cols, how='left')
 df_ventas = df_ventas.merge(df_ventas_75, on=group_cols, how='left')
 
 df_ventas['Alerta'] = 0
 
-df_ventas.loc[(df_ventas['Cantidad_KG'] < df_ventas['Min']) |
-              (df_ventas['Cantidad_KG'] > df_ventas['Max']), 'Alerta'] = 1
+df_ventas.loc[(df_ventas['Cantidad'] < df_ventas['Min']) |
+              (df_ventas['Cantidad'] > df_ventas['Max']), 'Alerta'] = 1
 
 test = df_ventas[df_ventas['Alerta'] == 1]
 
