@@ -1,7 +1,81 @@
+import copy
+
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
 import shelve
+from openpyxl.worksheet.worksheet import Worksheet
+from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.utils.dataframe import dataframe_to_rows
+from openpyxl import Workbook
+
+
+def get_excel_style(row, col):
+    """ Convert given row and column number to an Excel-style cell name. """
+
+    LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+    result = []
+    while col:
+        col, rem = divmod(col - 1, 26)
+        result[:0] = LETTERS[rem]
+    return ''.join(result) + str(row)
+
+
+def create_excel_table_from_df(df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, table_name):
+    """Crea tabla de Excel en la hoja indicada a partir de un pandas DataFrame.
+
+    Parametros:
+    df: pandas DataFrame
+    row_ini: fila inicial, por default 1
+    sheet_: Worksheet object openpyxl
+    table_name: nombre de la tabla"""
+
+    col_last = get_excel_style(1, df.shape[1])[:-1]
+
+    # Crear tabla de Excel
+    tabla_excel = Table(displayName=table_name,
+                        ref=f"A{row_ini}:{col_last}{df.shape[0] + row_ini}")  # nombre y tamaño
+
+    # declarar estilos a la tabla
+    style = TableStyleInfo(name="TableStyleMedium2", showRowStripes=False)
+
+    # asignar el estilo
+    tabla_excel.tableStyleInfo = style
+
+    # agregar tabla a la hoja
+    sheet_.add_table(tabla_excel)
+
+
+def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, as_table: False, **kwargs):
+    """Agregar pandas DataFrame a hoja de Excel.
+
+    Parametros:
+    df: pandas DataFrame
+    sheet_: Worksheet object openpyxl
+    row_ini: fila inicial, por default 1
+    as_table: boolean, crear Tabla de Excel"""
+
+    # Agregar dataframe de Python a Excel
+    rows = dataframe_to_rows(df, index=False, header=True)
+
+    # agregar filas a Excel
+    for r_idx, row in enumerate(rows, row_ini):
+        for c_idx, value in enumerate(row, 1):
+            sheet_.cell(row=r_idx, column=c_idx, value=value)
+
+    if as_table:
+        try:
+            table_name = kwargs['table_name']
+            create_excel_table_from_df(df, sheet_, row_ini, table_name)
+        except KeyError:
+            raise ValueError('A table name must be specified if as_table is True.')
+    try:
+        for sheet in ['Sheet', 'Hoja', 'Hoja1']:
+            wb.remove(wb[sheet])
+
+    except KeyError:
+        pass
 
 
 class FilePathShelf:
@@ -87,11 +161,48 @@ class FilePathShelf:
 
 
 class AnomalyApp:
+
+    @staticmethod
+    def calculate_min_max(df):
+
+        try:
+            df['Fecha'] = pd.to_datetime(df['Fecha'])
+        except ValueError:
+            df['Fecha'] = pd.to_datetime(df['Fecha'], format='%d/%m/%Y')
+
+        group_cols = ['Cliente_Cod',
+                      'Producto_Cod']
+
+        df_25 = df.groupby(group_cols)['Cantidad'].quantile(0.05).reset_index()
+        df_25 = df_25.rename(columns={'Cantidad': 'Min'})
+        df_75 = df.groupby(group_cols)['Cantidad'].quantile(0.95).reset_index()
+        df_75 = df_75.rename(columns={'Cantidad': 'Max'})
+
+        df = df.merge(df_25, on=group_cols, how='left')
+        df = df.merge(df_75, on=group_cols, how='left')
+
+        df = df.drop_duplicates(subset=['Cliente_Cod', 'Producto_Cod'])
+        df = df[['Cliente_Cod', 'Producto_Cod', 'Min', 'Max']]
+        df.loc[df['Min'] < 0, 'Min'] = 0
+
+        return df
+
     def __init__(self, path_):
         # installation path
         self.path_ = path_
         self.path_config_shelf = os.path.join(path_, 'config')
         self.path_file_paths = os.path.join(path_, 'paths')
+
+        # attributes to save the tables created after the anomaly check
+        self.df_normal = None
+        self.df_anomalies = None
+        self.df_missing = None
+
+        # read the original model and save as a dataframe
+        self.df_original_model = pd.read_csv('Anomalas_Modelo.csv')
+
+        # Anomaly count
+        self.anomaly_count = 0
 
         # initial routine
         if not self.check_if_installed():
@@ -101,32 +212,42 @@ class AnomalyApp:
         self.file_paths_shelf = FilePathShelf(self.path_file_paths)
 
     def setup(self):
+        """
+        Sets up the fixed path of the program.
+        """
         if not os.path.exists(self.path_):
             print('Instalando el programa.')
             os.makedirs(self.path_)
 
     def check_if_installed(self):
+        """
+        Checks if the fixed path of the program exists or not.
+        """
         if os.path.exists(self.path_):
             return True
         else:
             return False
 
     def set_path(self, filename, path):
+        """Set path to the paths shelf."""
 
         self.file_paths_shelf.write_to_shelf(filename, path)
 
     def get_path(self, filename):
+        """Get path from the paths shelf."""
 
         return self.file_paths_shelf.send_path(filename)
 
-    def read_data(self):
-        """Returns pandas dataframe with raw sales data."""
+    def read_new_data(self, file):
+        """
+        Returns pandas dataframe with raw orders data.
+        """
 
-        # Get Demand path from parameters shelf
-        path = self.file_paths_shelf.send_path('Orders')
-        # path = r"C:\Users\smirand27701\OneDrive\TESIS COPROLAC S.A\Datos Fuente\Ventas_Total.csv"
+        # Get the Orders path from paths shelf
+        path = self.file_paths_shelf.send_path(file)
 
         # Read the file into a pandas dataframe.
+        # Change the function used depending on the extension file.
         if path.endswith('xlsx'):
             df = pd.read_excel(path)
         else:
@@ -134,12 +255,16 @@ class AnomalyApp:
 
         return df
 
-    def clean_data(self):
+    def clean_new_data(self, file):
+        """Clean the raw orders data."""
 
-        df = self.read_data()
+        # Read the new data.
+        df = self.read_new_data(file)
 
+        # Keep columns by index.
         df = df.iloc[:, [4, 5, 6, 7, 8, 9]]
 
+        # Change column names.
         df.columns = ['Fecha',
                       'Cliente_Cod',
                       'Cliente_Nombre',
@@ -147,45 +272,115 @@ class AnomalyApp:
                       'Producto_Nombre',
                       'Cantidad']
 
+        # Keep columns with non null "Cantidad" field.
         df = df[df['Cantidad'].notnull()]
 
         return df
 
-    def read_clean_anomaly_model(self):
+    def anomaly_check(self):
+        """
+        Compare each client-product combination from the new orders with the anomaly model.
+        Client-product combinations that are out of the range (specified by the model) must be marked as anomalies.
+        Return three tables:
+        df_normal = with the normal orders
+        df_anomalies = with combinations that are out of range
+        df_missing = with combinations that don't exist in the existing model
+        """
 
-        # path = self.file_paths_shelf.send_path('Anomaly_Model') # todo: use this instead
-        path = r"C:\Users\smirand27701\OneDrive\TESIS COPROLAC S.A\Diseño\Entrada y captura\Herramienta Ordenes Anomalas\Anomalas_Modelo.csv"
+        # Read and clean the new orders data.
+        df_sales = self.clean_new_data('Orders')
 
-        # Read the file as a dataframe.
-        df = pd.read_csv(path)
-
-        return df
-
-    def create_verification_table(self):
-
-        df_sales = self.clean_data()
-        df_anomaly_model = self.read_clean_anomaly_model()
-
-        df_verification = df_sales.merge(df_anomaly_model,
+        # Create a dataframe with the new orders and the minimum and maximum acceptable values for each client-product
+        # combination.
+        df_verification = df_sales.merge(self.df_original_model,
                                          on=['Cliente_Cod', 'Producto_Cod'],
                                          how='left')
 
+        # If the "Cantidad" field is less than the minimum or greater than the maximum, the alert must be raised.
         df_verification['Alerta'] = 0
-
         df_verification.loc[(df_verification['Cantidad'] < df_verification['Min']) |
                             (df_verification['Cantidad'] > df_verification['Max']), 'Alerta'] = 1
 
+        # Create a table with all the found alerts.
         df_anomalies = df_verification[df_verification['Alerta'] == 1]
-        anomalies_count = df_anomalies.shape[0] # todo: print this out in listbox
+        cols_to_drop = ['Min', 'Max', 'Alerta']
+        df_anomalies.drop(columns=cols_to_drop, inplace=True)
 
-        # Set 'Alerta' to 'No hay datos históricos para esta combinación' if Client-Product combination is not
-        # in the anomaly model.
-        df_verification.loc[df_verification['Alerta'].isna(),
-                            'Alerta'] = 'No hay datos históricos para esta combinacíon.'
+        # The amount of rows in the alerts table is the amount of anomalies found.
+        self.anomaly_count = df_anomalies.shape[0]
 
-        return df_verification
+        # Create a table with all the missing alerts, with all the client-product combinations that don't exist in the
+        # model.
+        df_missing = df_verification[df_verification['Alerta'].isna()]
+        df_missing.drop(columns=cols_to_drop, inplace=True)
 
+        # Create a table with all the normal orders.
+        df_normal = df_verification[df_verification['Alerta'] == 0]
+        df_normal.drop(columns=cols_to_drop, inplace=True)
+
+        # save tables as attributes
+        self.df_normal = df_normal
+        self.df_anomalies = df_anomalies
+        self.df_missing = df_missing
+
+        return df_normal, df_anomalies, df_missing
+
+    def export_anomaly_check(self):
+
+        # Declare excel workbook and three sheets for the three different tables
+        wb = Workbook()
+
+        df_normal = copy.deepcopy(self.df_normal)
+        df_anomalies = copy.deepcopy(self.df_anomalies)
+        df_missing = copy.deepcopy(self.df_missing)
+
+        for df in [df_normal, df_anomalies, df_missing]:
+            df.columns = ['Fecha',
+                          'Codigo Cliente',
+                          'Nombre Cliente',
+                          'Codigo Producto',
+                          'Nombre Producto',
+                          'Cantidad']
+
+        if not df_normal.empty:
+            sheet_normal = wb.create_sheet('Correctas')
+            df_to_excel(wb, df_normal, sheet_normal, 1, as_table=True, table_name='Normales')
+
+        if not df_anomalies.empty:
+            sheet_anomalies = wb.create_sheet('Anomalias')
+            df_to_excel(wb, df_anomalies, sheet_anomalies, 1, as_table=True, table_name='Anomalias')
+
+        if not df_missing.empty:
+            sheet_missing = wb.create_sheet('Nuevos clientes')
+            df_to_excel(wb, df_missing, sheet_missing, 1, as_table=True, table_name='Nuevos')
+
+        temp_path = r'C:\Users\Usuario\OneDrive\TESIS COPROLAC S.A\Diseño\Entrada y captura\Herramienta Ordenes Anomalas\Test_Export.xlsx'
+        wb.save(temp_path)
+        wb.close()
 
     def update_model(self):
+        """
+        Update the model with new data.
+        The old minimums are replaced by lower minimums and old maximums are replaced by higher maximums.
+        """
 
-        return
+        df_new = self.clean_new_data('Anomaly_Model')
+
+        df_new = self.calculate_min_max(df_new)
+
+        df_old = copy.deepcopy(self.df_original_model)
+
+        df_new.columns = ['Cliente_Cod', 'Producto_Cod', 'Min_new', 'Max_new']
+
+        df = df_old.merge(df_new, on=['Cliente_Cod', 'Producto_Cod'], how='outer')
+
+        #
+        df.loc[df['Min_new'] < df['Min'], 'Min'] = 'Min_new'
+        df.loc[df['Max_new'] > df['Max'], 'Max'] = 'Max_new'
+
+        df.loc[df['Min'].isna(), 'Min'] = 'Min_new'
+        df.loc[df['Max'].isna(), 'Max'] = 'Max_new'
+
+        # df.to_csv(os.path.join(self.path_, 'Anomalas_Modelo.csv'))
+
+        return df
