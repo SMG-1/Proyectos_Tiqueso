@@ -87,7 +87,7 @@ class Main:
         self.height = self.screen_height  # - 100
 
         # top and bottom frame heights
-        self.top_frame_height = int(self.height / 2.5)
+        self.top_frame_height = int(self.height / 4)
         self.bottom_frame_height = self.height - self.top_frame_height
 
         # treeview and table widths
