@@ -123,8 +123,8 @@ class AnomalyApp:
         """Returns pandas dataframe with raw sales data."""
 
         # Get Demand path from parameters shelf
-        # path = self.file_paths_shelf.send_path('Orders') # todo: temp, use this line instead
-        path = r"C:\Users\smirand27701\OneDrive\TESIS COPROLAC S.A\Datos Fuente\Ventas_Total.csv"
+        path = self.file_paths_shelf.send_path('Orders')
+        # path = r"C:\Users\smirand27701\OneDrive\TESIS COPROLAC S.A\Datos Fuente\Ventas_Total.csv"
 
         # Read the file into a pandas dataframe.
         if path.endswith('xlsx'):
@@ -138,26 +138,16 @@ class AnomalyApp:
 
         df = self.read_data()
 
-        df = df[['Fecha de contabilización',
-                 'Número de artículo',
-                 'Descripción artículo/serv.',
-                 'Peso presentación (KG)',
-                 'Cantidad (unidades sistema)',
-                 'Código clientes SAP',
-                 'Nombre de cliente/proveedor']]
-
-        df = df[df['Peso presentación (KG)'].notnull()]
-
-        df['Cantidad'] = df['Peso presentación (KG)'] * df['Cantidad (unidades sistema)']
-        df.drop(columns=['Peso presentación (KG)', 'Cantidad (unidades sistema)'],
-                inplace=True)
+        df = df.iloc[:, [4, 5, 6, 7, 8, 9]]
 
         df.columns = ['Fecha',
-                      'Producto_Cod',
-                      'Producto_Nombre',
                       'Cliente_Cod',
                       'Cliente_Nombre',
+                      'Producto_Cod',
+                      'Producto_Nombre',
                       'Cantidad']
+
+        df = df[df['Cantidad'].notnull()]
 
         return df
 
@@ -197,4 +187,5 @@ class AnomalyApp:
 
 
     def update_model(self):
+
         return
