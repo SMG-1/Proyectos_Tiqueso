@@ -92,7 +92,6 @@ class Main:
                                    height=20)
         self.main_paned.add(self.list_box)
         self.list_box.insert(tk.END, 'Hola')
-        self.list_box.insert(tk.END, '42 anomalias encontradas.')
 
         # Frame - Contains Load, Execute and Export buttons
         self.config_frame = tk.Frame(self.master,
@@ -126,7 +125,9 @@ class Main:
         # Button - Export result
         self.btn_export = tk.Button(self.config_frame,
                                     bg=bg_color,
-                                    text='Exportar resultado')
+                                    text='Exportar resultado',
+                                    state='disabled',
+                                    command=self.run_export)
         self.btn_export.pack(padx=5,
                              pady=10)
 
@@ -145,7 +146,18 @@ class Main:
         self.master.wait_window(self.new_win)
 
     def run_anomaly_check(self):
-        self.app.create_verification_table()
+        self.app.anomaly_check()
+        anomaly_count = self.app.anomaly_count
+        self.list_box.insert(tk.END, f'{anomaly_count} anomalias encontradas.')
+        self.btn_export['state'] = 'active'
+
+    def run_export(self):
+        self.app.export_anomaly_check()
+        self.new_win = tk.Toplevel()
+        WindowPopUpMessage(self.new_win, 'Archivo exportado', 'El archivo fue exportado exitosamente.',
+                           self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
 
 class WindowSelectWorkPath:
@@ -265,9 +277,7 @@ class WindowSelectWorkPath:
             self.open_window_pop_up('Error',
                                     f'El directorio al archivo de órdenes indicado es inválido.')
 
-        # create separate datasets for each of the unique products
         try:
-            self.app.clean_data()
             self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
             self.close_window()
