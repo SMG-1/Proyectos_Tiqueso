@@ -529,23 +529,17 @@ class Application:
         # read BOM file
         bom = pd.read_excel(path_bom)
 
+        if bom.shape[1] != 6:
+            raise ValueError('El archivo de recetas debe tener 6 columnas:\nCódigo Receta, Nombre Receta,'
+                             'Cantidad Receta', 'Código Artículo', 'Nombre Artículo', 'Cantidad Artículo')
+
         # select columns and change column names
-        bom = bom.loc[:, ['Cod Receta',
-                          'Desc Receta',
-                          'Cant',
-                          'UND',
-                          'Cod Art',
-                          'Descripción del artículo',
-                          'Cantidad',
-                          'Unidad de medida de inventario']]
         bom.columns = ['Cod_Prod',
                        'Nombre_Prod',
                        'Cant_Prod',
-                       'Ud_Prod',
                        'Cod_Comp',
                        'Nombre_Comp',
-                       'Cant_Comp',
-                       'Ud_Comp']
+                       'Cant_Comp']
 
         # create table with intermediate products, that are not final components
         intermediate = pd.DataFrame(bom['Cod_Comp'].drop_duplicates()).dropna()
