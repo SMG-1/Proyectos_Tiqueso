@@ -267,10 +267,9 @@ class WindowSelectWorkPath:
 
         # create separate datasets for each of the unique products
         try:
-            self.app.create_segmented_data(process)
+            self.app.clean_data()
             self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
-            self.app.set_parameter('Mode', process)
             self.close_window()
 
         except ValueError as e:
@@ -316,21 +315,41 @@ class WindowModelConfig:
         # Label - Shows the last time the model was updated.
         last_update_date = datetime.datetime(2021, 4, 26).strftime('%d/%m/%Y')
         self.status_label = tk.Label(self.master,
-                                     text=f'Modelo actualizado por última vez el {last_update_date}.')
-        self.status_label.grid(row=0, column=0, columnspan=3)
+                                     text=f'Modelo actualizado por última vez el {last_update_date}.',
+                                     bg=bg_color)
+        self.status_label.grid(row=0,
+                               column=0,
+                               columnspan=2,
+                               pady=5)
 
         # Button - Show the path to the file that will be used to update the model.
         self.btn_update_model = tk.Button(self.master,
-                                    text='Actualizar modelo')
-        self.btn_update_model.grid(row=1, column=1)
+                                          text='Actualizar modelo',
+                                          command=lambda: self.add_path_selection_to_grid(row=2))
+        self.btn_update_model.grid(row=1,
+                                   column=0,
+                                   columnspan=2,
+                                   pady=5)
+
+        # Frame - Contains the path selection widgets
+        self.frame_path = tk.Frame(self.master,
+                                   bg=bg_color)
+        #self.frame_path.grid(row=2,
+        #                     column=0,
+        #                     columnspan=2,
+        #                     pady=5)
 
         # Label - Naming label for the path widgets
-        self.file_path_label = tk.Label(self.master,
-                                        text='Directorio:')
+        self.file_path_label = tk.Label(self.frame_path,
+                                        text='Directorio:',
+                                        bg=bg_color)
+        self.file_path_label.grid(row=0,
+                                  column=0,
+                                  padx=5)
 
         # Label - Shows the path the user selected.
         path_model = self.app.get_path('Anomaly_Model')
-        self.lbl_path = tk.Label(self.master,
+        self.lbl_path = tk.Label(self.frame_path,
                                  text=path_model,
                                  bg=bg_color,
                                  pady=10,
@@ -338,31 +357,46 @@ class WindowModelConfig:
                                  width=150,
                                  relief="groove",
                                  anchor='w')
+        self.lbl_path.grid(row=0,
+                           column=1,
+                           pady=5)
 
         # Button,opens the browse files window
-        self.btn_browse = tk.Button(self.master,
+        self.btn_browse = tk.Button(self.frame_path,
                                     text='...',
-                                    command=lambda: self.browse_files('Level_1'))
+                                    command=self.browse_files)
+        self.btn_browse.grid(row=0,
+                             column=2,
+                             padx=5)
 
         # accept and cancel buttons
         self.btn_accept = tk.Button(self.master,
                                     text='Aceptar',
                                     command=self.save_selection)
+        self.btn_accept.grid(row=3,
+                             column=0,
+                             pady=5)
 
         self.btn_cancel = tk.Button(self.master,
                                     text='Cancelar',
                                     command=self.close_window)
+        self.btn_cancel.grid(row=3,
+                             column=1,
+                             pady=5)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
     def add_path_selection_to_grid(self, row):
 
-        self.file_path_label.grid(row=row, column=0)
-        self.lbl_path.grid(row=row, column=1)
-        self.btn_browse.grid(row=row, column=2)
+        #self.frame_path.grid(row=row,
+        #                     column=0)
 
-        self.btn_accept.grid(row=row+1, column=0)
-        self.btn_cancel.grid(row=row+1, column=2)
+        self.frame_path.grid(row=row,
+                             column=0,
+                             columnspan=2,
+                             pady=5)
+
+        center_window(self.master, self.screen_width, self.screen_height)
 
     def browse_files(self):
 
