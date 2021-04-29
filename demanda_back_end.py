@@ -841,14 +841,14 @@ class Application:
 
                 # drop old predictions from the fitted dataset
                 total_df_old = total_df_old.loc[df.index]
-                total_df_old.drop(columns=[self.var_names[2]], inplace=True)
+                total_df_old.drop(columns=['Pronóstico', 'Min', 'Max'], inplace=True)
 
                 # get new predictions
                 new_preds = self.predict_fwd(df, model)
 
                 # add new predictions to the old dataset
                 total_df_new = pd.concat([total_df_old, new_preds], axis=1)
-                total_df_new.columns = self.var_names
+                total_df_new.columns = self.var_names + ['Min', 'Max']
 
                 # replace the new dataset with the old one on the fitted dataframes dictionary
                 self.dict_fitted_dfs[sku] = total_df_new
@@ -859,7 +859,7 @@ class Application:
         file_name = file_name + extension
 
         if process in ['Demand', 'Model']:
-            col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico']
+            col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico', 'Min', 'Max']
 
         elif process == 'Forecast':
             col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
@@ -925,7 +925,6 @@ class Application:
             df_export['Error_Abs'] = df_export['Error'].abs()
             mae = df_export['Error_Abs'].mean()
             mae_perc = mae/mean_demand
-
 
         df_export['Pronóstico'] = df_export['Pronóstico'].round(2)
 
