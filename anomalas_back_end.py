@@ -9,6 +9,8 @@ from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl import Workbook
 
+pd.options.mode.chained_assignment = None
+
 
 def get_excel_style(row, col):
     """ Convert given row and column number to an Excel-style cell name. """
@@ -93,10 +95,11 @@ class FilePathShelf:
         paths_shelf = shelve.open(self._path)
 
         # set keys list
-        self._shelve_keys = ['Working',
+        self._shelve_keys = ['Export',
                              'Orders',
                              'Anomaly_Model',
-                             'Temp']
+                             'Temp',
+                             'Export_FileName']
 
         # try to get value from key, if empty initialize
         for _path in self._shelve_keys:
@@ -262,10 +265,11 @@ class AnomalyApp:
         df = self.read_new_data(file)
 
         # Keep columns by index.
-        df = df.iloc[:, [4, 5, 6, 7, 8, 9]]
+        df = df.iloc[:, [2, 4, 5, 6, 7, 8, 9]]
 
         # Change column names.
-        df.columns = ['Fecha',
+        df.columns = ['Orden',
+                      'Fecha',
                       'Cliente_Cod',
                       'Cliente_Nombre',
                       'Producto_Cod',
@@ -311,11 +315,11 @@ class AnomalyApp:
 
         # Create a table with all the missing alerts, with all the client-product combinations that don't exist in the
         # model.
-        df_missing = df_verification[df_verification['Alerta'].isna()]
+        df_missing = df_verification[df_verification['Min'].isna()]
         df_missing.drop(columns=cols_to_drop, inplace=True)
 
         # Create a table with all the normal orders.
-        df_normal = df_verification[df_verification['Alerta'] == 0]
+        df_normal = df_verification[(df_verification['Alerta'] == 0) & (df_verification['Min'].notna())]
         df_normal.drop(columns=cols_to_drop, inplace=True)
 
         # save tables as attributes
@@ -335,28 +339,44 @@ class AnomalyApp:
         df_missing = copy.deepcopy(self.df_missing)
 
         for df in [df_normal, df_anomalies, df_missing]:
-            df.columns = ['Fecha',
+            df.columns = ['Orden',
+                          'Fecha',
                           'Codigo Cliente',
                           'Nombre Cliente',
                           'Codigo Producto',
                           'Nombre Producto',
                           'Cantidad']
 
+        letters = 'ABCDEFG'
+        sizes_list = [12, 12, 16, 40, 16, 40, 15]
         if not df_normal.empty:
             sheet_normal = wb.create_sheet('Correctas')
             df_to_excel(wb, df_normal, sheet_normal, 1, as_table=True, table_name='Normales')
+            self.change_col_sizes(sheet_normal, letters, sizes_list)
 
         if not df_anomalies.empty:
             sheet_anomalies = wb.create_sheet('Anomalias')
             df_to_excel(wb, df_anomalies, sheet_anomalies, 1, as_table=True, table_name='Anomalias')
+            self.change_col_sizes(sheet_anomalies, letters, sizes_list)
 
         if not df_missing.empty:
             sheet_missing = wb.create_sheet('Nuevos clientes')
             df_to_excel(wb, df_missing, sheet_missing, 1, as_table=True, table_name='Nuevos')
+            self.change_col_sizes(sheet_missing, letters, sizes_list)
 
-        temp_path = r'C:\Users\Usuario\OneDrive\TESIS COPROLAC S.A\Diseño\Entrada y captura\Herramienta Ordenes Anomalas\Test_Export.xlsx'
-        wb.save(temp_path)
+        path_ = self.file_paths_shelf.send_path('Export')
+        file_name_ = self.file_paths_shelf.send_path('Export_FileName') + '.xlsx'
+        full_path_ = os.path.join(path_, file_name_)
+        wb.save(full_path_)
         wb.close()
+
+    @staticmethod
+    def change_col_sizes(sheet, letters: str, sizes_list: list):
+
+        letters_list = [let for let in letters]
+
+        for col, size in zip(letters_list, sizes_list):
+            sheet.column_dimensions[col].width = size
 
     def update_model(self):
         """
