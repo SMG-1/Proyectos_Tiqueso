@@ -40,6 +40,19 @@ def browse_files_master(initial_dir):
     return filepath, filename
 
 
+def browse_directory_master(initial_dir):
+    if initial_dir != '':
+        initial_dir_ = initial_dir
+
+    else:
+        initial_dir_ = "/"
+
+    filepath = filedialog.askdirectory(initialdir=initial_dir_,
+                                       title="Seleccione un directorio")
+
+    return filepath
+
+
 def validate_path(path: str, is_file):
     """Check if a path is valid, if is_file is True, check if it's the correct extension."""
 
@@ -91,7 +104,6 @@ class Main:
                                    width=150,
                                    height=20)
         self.main_paned.add(self.list_box)
-        self.list_box.insert(tk.END, 'Hola')
 
         # Frame - Contains Load, Execute and Export buttons
         self.config_frame = tk.Frame(self.master,
@@ -135,7 +147,11 @@ class Main:
 
     def open_window_select_path(self):
         self.new_win = tk.Toplevel()
-        WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
+        WindowSelectWorkPath(self.new_win,
+                             self.app,
+                             self.screen_width,
+                             self.screen_height,
+                             'Orders')
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -152,17 +168,20 @@ class Main:
         self.btn_export['state'] = 'active'
 
     def run_export(self):
-        self.app.export_anomaly_check()
         self.new_win = tk.Toplevel()
-        WindowPopUpMessage(self.new_win, 'Archivo exportado', 'El archivo fue exportado exitosamente.',
-                           self.screen_width, self.screen_height)
+        WindowSelectWorkPath(self.new_win,
+                             self.app,
+                             self.screen_width,
+                             self.screen_height,
+                             'Export')
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
 
 class WindowSelectWorkPath:
 
-    def __init__(self, master, app: AnomalyApp, screen_width_, screen_height_):
+    def __init__(self, master, app: AnomalyApp, screen_width_, screen_height_, file):
+
         self.master = master
         self.master.title("Selección de directorio")
         self.master.configure(background=bg_color)
@@ -170,7 +189,11 @@ class WindowSelectWorkPath:
         self.screen_height = screen_height_
         self.width = self.screen_width / 2
         self.height = self.screen_height / 5
+
         self.app = app
+
+        self.file = file
+
         self.new_win = None
         self.successful_load = False
         self.canceled = False
@@ -206,7 +229,7 @@ class WindowSelectWorkPath:
         #  ROW 0: LABEL THAT SHOWS THE PATH
         # Name Label, first column
         self.lbl_name_path = tk.Label(self.paths_frame,
-                                      text='Directorio',
+                                      text='Directorio:',
                                       bg=bg_color,
                                       padx=5)
 
@@ -216,7 +239,7 @@ class WindowSelectWorkPath:
                                 sticky='W')
 
         # Path Label, second column
-        path = self.app.get_path('Orders')
+        path = self.app.get_path(self.file)
         self.lbl_path = tk.Label(self.paths_frame,
                                  text=path,
                                  bg=bg_color,
@@ -236,7 +259,7 @@ class WindowSelectWorkPath:
         # Browse Button, third column, to open the browse files window
         self.btn_browse = tk.Button(self.paths_frame,
                                     text='...',
-                                    command=lambda: self.browse_files('Level_1'))
+                                    command=self.browse_files)
 
         # Browse Button, third column, to open the browse files window
         self.btn_browse.grid(row=0,
@@ -245,48 +268,91 @@ class WindowSelectWorkPath:
                              pady=10,
                              sticky='WE')
 
+        if file == 'Export':
+            self.lbl_file_name = tk.Label(self.paths_frame,
+                                          text='Nombre del archivo:',
+                                          bg=bg_color,
+                                          pady=10)
+            self.lbl_file_name.grid(row=1,
+                                    column=0,
+                                    padx=10,
+                                    pady=10)
+            self.entry_file_name = tk.Entry(self.paths_frame)
+            self.entry_file_name.insert(tk.END,
+                                        'Analisis Ordenes')
+            self.entry_file_name.grid(row=1,
+                                      column=1,
+                                      padx=10,
+                                      pady=10,
+                                      sticky='W')
+
         center_window(self.master, self.screen_width, self.screen_height)
 
-    def browse_files(self, label_name):
+    def browse_files(self):
 
         # get the last path that the user selected
         ini_dir_ = self.app.get_path('Temp')
 
         # call function to open a file selection window
-        filepath, filename = browse_files_master(ini_dir_)
+        if self.file == 'Orders':
+            filepath, filename = browse_files_master(ini_dir_)
 
-        # change the text content of the label
-        if filename != '':
-            # set the selected path as the new Temp path
-            self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
+            # change the text content of the label
+            if filename != '':
+                # set the selected path as the new Temp path
+                self.app.set_path('Temp', os.path.dirname(os.path.abspath(filename)))
 
-            self.lbl_path.configure(text=filename)
+                self.lbl_path.configure(text=filename)
+
+        else:
+            ini_dir_ = os.path.abspath(ini_dir_)
+            filepath = browse_directory_master(ini_dir_)
+
+            if filepath != '':
+
+                self.app.set_path('Temp', filepath)
+
+                self.lbl_path.configure(text=filepath)
 
     def save_selection(self):
         """"""
 
+        path_ = self.lbl_path['text']
+
         # open PopUp warning if the Path Label is empty
-        if self.lbl_path['text'] == '':
+        if path_ == '':
             self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
 
-        path = self.lbl_path['text']
-        if validate_path(path, is_file=True):
-            self.app.set_path('Orders', path)
+        if validate_path(path_, is_file=True):
+            self.app.set_path(self.file, path_)
+
+            if self.file == 'Export':
+               file_name = self.entry_file_name.get()
+               if file_name != '':
+                    self.app.set_path('Export_FileName', file_name)
+
+            try:
+                if self.file == 'Export':
+                    self.app.export_anomaly_check()
+                    win_name = 'Archivo exportado'
+                    win_msg = 'El archivo fue exportado exitosamente.'
+                else:
+                    win_name = 'Archivo cargado.'
+                    win_msg = 'El archivo fue cargado exitosamente.'
+
+                self.open_window_pop_up(win_name, win_msg)
+                self.successful_load = True
+                self.close_window()
+
+            except ValueError as e:
+                self.open_window_pop_up('Error\n', e)
+
+            except PermissionError as e:
+                self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
 
         else:
             self.open_window_pop_up('Error',
-                                    f'El directorio al archivo de órdenes indicado es inválido.')
-
-        try:
-            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
-            self.successful_load = True
-            self.close_window()
-
-        except ValueError as e:
-            self.open_window_pop_up('Error', e)
-
-        except PermissionError as e:
-            self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
+                                    f'El directorio indicado es inválido.')
 
     def open_window_pop_up(self, title, msg):
         # open new TopLevel as a popup window
@@ -344,7 +410,7 @@ class WindowModelConfig:
         # Frame - Contains the path selection widgets
         self.frame_path = tk.Frame(self.master,
                                    bg=bg_color)
-        #self.frame_path.grid(row=2,
+        # self.frame_path.grid(row=2,
         #                     column=0,
         #                     columnspan=2,
         #                     pady=5)
@@ -398,7 +464,7 @@ class WindowModelConfig:
 
     def add_path_selection_to_grid(self, row):
 
-        #self.frame_path.grid(row=row,
+        # self.frame_path.grid(row=row,
         #                     column=0)
 
         self.frame_path.grid(row=row,
