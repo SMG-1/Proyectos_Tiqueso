@@ -323,7 +323,12 @@ class WindowSelectWorkPath:
         if path_ == '':
             self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
 
-        if validate_path(path_, is_file=True):
+        if self.file == 'Orders':
+            is_file = True
+        else:
+            is_file = False
+
+        if validate_path(path_, is_file=is_file):
             self.app.set_path(self.file, path_)
 
             if self.file == 'Export':
