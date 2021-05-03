@@ -191,7 +191,7 @@ class AnomalyApp:
         return df
 
     def __init__(self, path_):
-        # installation path
+        # installation path, located in Appdata/Roaming
         self.path_ = path_
         self.path_config_shelf = os.path.join(path_, 'config')
         self.path_file_paths = os.path.join(path_, 'paths')
@@ -202,7 +202,12 @@ class AnomalyApp:
         self.df_missing = None
 
         # read the original model and save as a dataframe
-        self.df_original_model = pd.read_csv('Anomalas_Modelo.csv')
+        if os.path.exists(os.path.join(self.path_, 'Anomalas_Modelo.csv')):
+            # If the model has been updated by the user, the model is located in the Appdata folder.
+            self.df_original_model = pd.read_csv(os.path.join(self.path_, 'Anomalas_Modelo.csv'))
+        else:
+            # If the model has not been updated by the user, the model is bundled with the executable.
+            self.df_original_model = pd.read_csv(r'data/Anomalas_Modelo.csv')
 
         # Anomaly count
         self.anomaly_count = 0
@@ -384,23 +389,38 @@ class AnomalyApp:
         The old minimums are replaced by lower minimums and old maximums are replaced by higher maximums.
         """
 
+        # Read the data provided by the user.
         df_new = self.clean_new_data('Anomaly_Model')
 
+        # Calculate new range for the provided data.
         df_new = self.calculate_min_max(df_new)
 
+        # Create a copy of the original model data
         df_old = copy.deepcopy(self.df_original_model)
 
+        # Change the column names of the data provided by the user.
         df_new.columns = ['Cliente_Cod', 'Producto_Cod', 'Min_new', 'Max_new']
 
+        # Create new table with old and new data
         df = df_old.merge(df_new, on=['Cliente_Cod', 'Producto_Cod'], how='outer')
 
-        #
-        df.loc[df['Min_new'] < df['Min'], 'Min'] = 'Min_new'
-        df.loc[df['Max_new'] > df['Max'], 'Max'] = 'Max_new'
+        # If new min is less than original min, replace with the new min.
+        # If new max is greater than original max, replace with the new max.
+        df.loc[df['Min_new'] < df['Min'], 'Min'] = df['Min_new']
+        df.loc[df['Max_new'] > df['Max'], 'Max'] = df['Max_new']
 
-        df.loc[df['Min'].isna(), 'Min'] = 'Min_new'
-        df.loc[df['Max'].isna(), 'Max'] = 'Max_new'
+        # If there is new data, update the original columns.
+        df.loc[df['Min'].isna(), 'Min'] = df['Min_new']
+        df.loc[df['Max'].isna(), 'Max'] = df['Max_new']
 
-        # df.to_csv(os.path.join(self.path_, 'Anomalas_Modelo.csv'))
+        # Drop the new data columns.
+        df.drop(columns=['Min_new', 'Max_new'], inplace=True)
+
+        # If the min is equal to the max, drop the line.
+        df = df[df['Min'] != df['Max']]
+
+        # Save the updated model to the %APPDATA% path.
+        df.to_csv(os.path.join(self.path_, 'Anomalas_Modelo.csv'),
+                  index=False)
 
         return df
