@@ -290,8 +290,8 @@ class Main:
 
         # Main Frame declaration, on the right of the tree view, inside the Paned Window
         self.main_frame = Frame(self.main_paned,
-                                width=self.width,
-                                height=self.height,
+                                # width=self.width,
+                                # height=self.height,
                                 bg=bg_color)
 
         # Add the tree view and te main frame to the Paned Window, and pack it to fill the screen
@@ -304,15 +304,15 @@ class Main:
         # Top Frame that covers the top half of the screen
         # Contains the Table Frame
         self.top_frame = Frame(self.main_frame,
-                               width=self.table_width,
-                               height=self.top_frame_height,
+                               # width=self.table_width,
+                               # height=self.top_frame_height,
                                bg=bg_color)
 
         # Bottom Frame that contains the bottom half of the screen
         # Contains Plot Frame to the left and Config Frame to the right
         self.bottom_frame = Frame(self.main_frame,
-                                  width=self.table_width,
-                                  height=self.bottom_frame_height,
+                                  # width=self.table_width,
+                                  # height=self.bottom_frame_height,
                                   bg=bg_color)
 
         # Pack the Top and Bottom Frames
@@ -323,17 +323,17 @@ class Main:
         # Table Frame that contains the pandastable
         # Packed to the Top Frame
         self.frame_table = Frame(self.top_frame,
-                                 width=self.table_width,
-                                 height=self.top_frame_height,
+                                 # width=self.table_width,
+                                 # height=self.top_frame_height,
                                  bg=bg_color)
         self.frame_table.pack(fill='x',
-                              expand=True,
+                              # expand=True,
                               anchor='n')
 
         # Frame that contains the Notebook
         self.frame_notebook = Frame(self.bottom_frame,
-                                    width=self.plot_width,
-                                    height=self.bottom_frame_height,
+                                    # width=self.plot_width,
+                                    # height=self.bottom_frame_height,
                                     bg=bg_color)
         self.frame_notebook.pack(fill='both', expand=True, side=LEFT)
 
@@ -377,7 +377,7 @@ class Main:
         # Pack the Top Frame
         # Fill the x axis
         self.top_frame.pack(fill='x',
-                            expand=True,
+                            # expand=True,
                             anchor='n')
 
         # Pack the Bottom Frame, fill the x axis
@@ -513,14 +513,17 @@ class Main:
 
         # If the plot type is Model, use a triple axis plot.
         if plot_type == 'Model':
+
             col = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico', 'Min', 'Max']
             df.columns = col
             dates = df['Fecha'].values
+
             df.plot(x=col[0], y=col[1], color='b', ax=self.ax_model)
             df.plot(x=col[0], y=col[2], color='r', ax=self.ax_model)
             df.plot(x=col[0], y=col[3], color='g', ax=self.ax_model)
             df.plot(x=col[0], y=col[4], color='g', ax=self.ax_model)
             df.plot(x=col[0], y=col[5], color='g', ax=self.ax_model)
+            self.ax_model.legend(['Demanda', 'Ajuste', 'Pronóstico'], loc='lower center', ncol=3)
 
             self.ax_model.fill_between(dates, df[col[4]], df[col[5]], alpha=0.5, facecolor='green')
 
@@ -663,7 +666,7 @@ class Main:
             thread.start()
 
             self.new_win = Toplevel(self.master)
-            self.new_win.overrideredirect(1)  # todo> temporary
+            self.new_win.overrideredirect(1)  
             WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
                            self.screen_height)
             self.new_win.grab_set()
