@@ -162,10 +162,15 @@ class Main:
         self.master.wait_window(self.new_win)
 
     def run_anomaly_check(self):
-        self.app.anomaly_check()
-        anomaly_count = self.app.anomaly_count
-        self.list_box.insert(tk.END, f'{anomaly_count} anomalias encontradas.')
-        self.btn_export['state'] = 'active'
+
+        try:
+            self.app.anomaly_check()
+            anomaly_count = self.app.anomaly_count
+            self.list_box.insert(tk.END, f'{anomaly_count} anomalias encontradas.')
+            self.btn_export['state'] = 'active'
+        except FileNotFoundError:
+            self.open_window_pop_up('Error',
+                                    'El archivo indicado no existe.')
 
     def run_export(self):
         self.new_win = tk.Toplevel()
@@ -174,6 +179,16 @@ class Main:
                              self.screen_width,
                              self.screen_height,
                              'Export')
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+    def open_window_pop_up(self, title, msg):
+
+        # open new TopLevel as a popup window
+        self.new_win = tk.Toplevel(self.master)
+        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
+
+        # freeze master window until user closes the pop up
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -272,10 +287,9 @@ class WindowSelectWorkPath:
             self.lbl_file_name = tk.Label(self.paths_frame,
                                           text='Nombre del archivo:',
                                           bg=bg_color,
-                                          pady=10)
+                                          padx=5)
             self.lbl_file_name.grid(row=1,
                                     column=0,
-                                    padx=10,
                                     pady=10)
             self.entry_file_name = tk.Entry(self.paths_frame)
             self.entry_file_name.insert(tk.END,
@@ -353,7 +367,7 @@ class WindowSelectWorkPath:
                 self.open_window_pop_up('Error\n', e)
 
             except PermissionError as e:
-                self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
+                self.open_window_pop_up('Error', 'Debe cerrar el siguiente archivo antes de proceder:\n\n' + e.filename)
 
         else:
             self.open_window_pop_up('Error',
@@ -469,6 +483,8 @@ class WindowModelConfig:
 
     def add_path_selection_to_grid(self, row):
 
+        self.btn_update_model.grid_forget()
+
         # self.frame_path.grid(row=row,
         #                     column=0)
 
@@ -512,7 +528,9 @@ class WindowModelConfig:
         # create separate datasets for each of the unique products
         try:
             self.app.update_model()
-            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
+            self.open_window_pop_up('Mensaje', 'Modelo actualizado.')
+            today_date = datetime.datetime.today().strftime('%d/%m/%Y')
+            self.status_label['text'] = f'Modelo actualizado por última vez el {today_date}.'
             self.successful_load = True
             self.close_window()
 
