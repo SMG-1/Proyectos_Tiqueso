@@ -11,7 +11,7 @@ from functools import partial
 import pandas as pd
 import pandastable
 from matplotlib import pyplot as plt
-from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg)
+from matplotlib.backends.backend_tkagg import (FigureCanvasTkAgg, NavigationToolbar2Tk)
 from matplotlib.figure import Figure
 from win32api import GetSystemMetrics
 
@@ -110,15 +110,27 @@ class Main:
 
         # initializing parameters
         self.new_win = None
+
+        # Data Figure
         self.figure_data = None
-        self.figure_model = None
         self.ax_data = None
-        self.ax_model = None
-        self.ax_2 = None
         self.data_plot = None
+        self.data_toolbar = None
+
+        # Model Figure
+        self.figure_model = None
+        self.ax_model = None
         self.model_plot = None
+        self.model_toolbar = None
+        self.ax_2 = None
+
+        # Pandas table
         self.pd_table = None
+
+        # Model ready boolean
         self.model_ready = False
+
+        # Active process determines the layout of the GUI
         self.active_process = self.back_end.get_parameter('Mode')
 
         # --- DROPDOWN MENU DECLARATION - TOOLBAR ---
@@ -271,10 +283,10 @@ class Main:
                                      side=LEFT)
 
         # Paned Window that contains the tree view and a master frame
-        self.main_paned = PanedWindow(self.master,
-                                      width=self.width,
-                                      height=self.height,
-                                      orient=HORIZONTAL)
+        self.paned_win_main = PanedWindow(self.master,
+                                          width=self.width,
+                                          height=self.height,
+                                          orient=HORIZONTAL)
 
         # Tree View declaration, double click is binded to the tree view
         self.tree_view = ttk.Treeview(self.master)
@@ -289,28 +301,43 @@ class Main:
         self.tree_view.heading('1', text='Producto', anchor='w')
 
         # Main Frame declaration, on the right of the tree view, inside the Paned Window
-        self.main_frame = Frame(self.main_paned,
+        self.main_frame = Frame(self.paned_win_main,
                                 # width=self.width,
                                 # height=self.height,
                                 bg=bg_color)
 
+        # Paned Window that contains the tree view and a master frame
+        self.paned_win_tbl_plot = PanedWindow(self.main_frame,
+                                              width=self.width,
+                                              height=self.height,
+                                              orient=VERTICAL)
+
         # Add the tree view and te main frame to the Paned Window, and pack it to fill the screen
-        self.main_paned.add(self.tree_view)
-        self.main_paned.add(self.main_frame)
-        self.main_paned.pack(fill=BOTH, expand=1)
+        self.paned_win_main.pack(fill=BOTH, expand=True)
+        self.paned_win_main.add(self.tree_view)
+        # self.paned_win_main.add(self.main_frame)
+        self.paned_win_main.add(self.main_frame)
 
         # --- Level 1 --- Top and Bottom Frames
 
         # Top Frame that covers the top half of the screen
         # Contains the Table Frame
-        self.top_frame = Frame(self.main_frame,
+        self.top_frame = Frame(self.master,
+                               borderwidth=2,
+                               width=150,
+                               relief="groove",
+                               # self.main_frame,
                                # width=self.table_width,
                                # height=self.top_frame_height,
                                bg=bg_color)
 
         # Bottom Frame that contains the bottom half of the screen
         # Contains Plot Frame to the left and Config Frame to the right
-        self.bottom_frame = Frame(self.main_frame,
+        self.bottom_frame = Frame(self.master,
+                                  borderwidth=2,
+                                  width=150,
+                                  relief="groove",
+                                  # self.main_frame,
                                   # width=self.table_width,
                                   # height=self.bottom_frame_height,
                                   bg=bg_color)
@@ -326,9 +353,10 @@ class Main:
                                  # width=self.table_width,
                                  # height=self.top_frame_height,
                                  bg=bg_color)
-        self.frame_table.pack(fill='x',
-                              # expand=True,
-                              anchor='n')
+        self.frame_table.pack(fill='both',
+                              expand=True,
+                              # anchor='n'
+                              )
 
         # Frame that contains the Notebook
         self.frame_notebook = Frame(self.bottom_frame,
@@ -347,21 +375,16 @@ class Main:
         self.notebook_plotting.add(self.tab_data_plot, text='Datos')
         self.notebook_plotting.add(self.tab_model_plot, text='Modelo', state='disabled')
         self.notebook_plotting.add(self.tab_metrics, text='Métricas', state='disabled')
-        self.notebook_plotting.pack()
+        self.notebook_plotting.pack(fill=BOTH,
+                                    expand=1)
 
         # Metrics Frame, contains three columns
         # Metric Name | Metric Value | Metric Description
         self.metrics_frame = Frame(self.tab_metrics)
-        self.metrics_frame.pack(fill=BOTH, expand=True)
+        self.metrics_frame.pack(fill='y',
+                                # expand=True
+                                )
         self.metrics_frame.columnconfigure((0, 1, 2), uniform='equal', weight=1)
-
-        # Config Frame, contains several configuration widgets
-        # self.frame_config = LabelFrame(self.bottom_frame,
-        #                               text='Configuración',
-        #                               width=self.config_width,
-        #                               height=self.bottom_frame_height,
-        #                               bg=bg_color)
-        # self.frame_config.pack(fill='both', expand=True, side=RIGHT)
 
         # --- Level 3 --- Time Granularity Combobox, N Periods Entry, Refresh Views Button
 
@@ -376,14 +399,18 @@ class Main:
 
         # Pack the Top Frame
         # Fill the x axis
-        self.top_frame.pack(fill='x',
-                            # expand=True,
-                            anchor='n')
+        # self.top_frame.pack(fill='x',
+        #                    # expand=True,
+        #                    anchor='n')
 
         # Pack the Bottom Frame, fill the x axis
-        self.bottom_frame.pack(fill='x',
-                               expand=True,
-                               anchor='s')
+        # self.bottom_frame.pack(fill='x',
+        #                       expand=True,
+        #                       anchor='s')
+
+        self.paned_win_tbl_plot.add(self.top_frame)
+        self.paned_win_tbl_plot.add(self.bottom_frame)
+        self.paned_win_tbl_plot.pack(fill=BOTH, expand=True)
 
         try:
             self.temp_label.pack_forget()
@@ -444,7 +471,7 @@ class Main:
 
         # Add a Label telling user to load files on the Top and Bottom Frames
         temp_text = 'Cargue archivos para ver algo aquí.'
-        self.temp_label = Label(self.main_frame, text=temp_text)
+        self.temp_label = Label(self.paned_win_tbl_plot, text=temp_text)
         self.temp_label.pack(fill=BOTH, expand=True)
 
     def create_fig(self, df, plot_type):
@@ -458,27 +485,39 @@ class Main:
 
         # Set the default DPI to be used.
         dpi = 100
+        x = self.plot_width / dpi
+        y = self.bottom_frame_height / dpi
 
         # If the plot type is Demand or Forecast:
         # Data is packed into the data plot widget.
         if plot_type in ['Demand', 'Forecast', 'Metrics']:
             if self.data_plot is not None:
                 self.data_plot.get_tk_widget().destroy()
+            if self.data_toolbar is not None:
+                self.data_toolbar.destroy()
 
-            self.figure_data = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
+            self.figure_data = Figure(figsize=(x, y), dpi=dpi)
             self.ax_data = self.figure_data.add_subplot(1, 1, 1)
+
             self.data_plot = FigureCanvasTkAgg(self.figure_data, self.tab_data_plot)
-            self.data_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
+            self.data_toolbar = NavigationToolbar2Tk(self.data_plot, self.tab_data_plot)
+            self.data_toolbar.update()
+            self.data_plot.get_tk_widget().pack(side=TOP, fill=BOTH, expand=1)
 
         # If the plot type is Model:
         # Data is packed into the model plot widget.
         else:
             if self.model_plot is not None:
                 self.model_plot.get_tk_widget().destroy()
+            if self.model_toolbar is not None:
+                self.model_toolbar.destroy()
 
-            self.figure_model = Figure(figsize=(self.plot_width / dpi, self.bottom_frame_height / dpi), dpi=dpi)
+            self.figure_model = Figure(figsize=(x, y), dpi=dpi)
             self.ax_model = self.figure_model.add_subplot(1, 1, 1)
+
             self.model_plot = FigureCanvasTkAgg(self.figure_model, self.tab_model_plot)
+            self.model_toolbar = NavigationToolbar2Tk(self.model_plot, self.tab_model_plot)
+            self.model_toolbar.update()
             self.model_plot.get_tk_widget().pack(side=LEFT, fill=BOTH, expand=1)
 
         # Reset the index of the data frame to use the date as an axis.
@@ -513,7 +552,6 @@ class Main:
 
         # If the plot type is Model, use a triple axis plot.
         if plot_type == 'Model':
-
             col = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico', 'Min', 'Max']
             df.columns = col
             dates = df['Fecha'].values
@@ -666,7 +704,7 @@ class Main:
             thread.start()
 
             self.new_win = Toplevel(self.master)
-            self.new_win.overrideredirect(1)  
+            self.new_win.overrideredirect(1)
             WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
                            self.screen_height)
             self.new_win.grab_set()
@@ -751,7 +789,20 @@ class Main:
         # first column is the name of the metric
         # second column is the rounded value of the metric
         # third column is the description of the metric
-        for idx, (metric, value) in enumerate(metrics_dict.items()):
+        Label(self.metrics_frame, text='Métrica', padx=10).grid(row=0,
+                                                                column=0,
+                                                                padx=10,
+                                                                pady=5)
+        Label(self.metrics_frame, text='Valor', padx=10).grid(row=0,
+                                                              column=1,
+                                                              padx=10,
+                                                              pady=5)
+        Label(self.metrics_frame, text='Descripción', padx=10).grid(row=0,
+                                                                    column=2,
+                                                                    padx=10,
+                                                                    pady=5)
+
+        for idx, (metric, value) in enumerate(metrics_dict.items(), 1):
             Label(self.metrics_frame, text=metric, padx=10).grid(row=idx,
                                                                  column=0,
                                                                  padx=10,
