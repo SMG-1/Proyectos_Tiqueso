@@ -20,6 +20,13 @@ from demanda_back_end import ConfigShelf
 
 plt.style.use('ggplot')
 bg_color = 'white'
+pd.set_option('display.float_format', lambda x: '%,g' % x)
+
+
+def _from_rgb(rgb):
+    """translates an rgb tuple of int to a tkinter friendly color code
+    """
+    return "#%02x%02x%02x" % rgb
 
 
 def center_window(toplevel, screen_width, screen_height):
@@ -71,7 +78,37 @@ def validate_path(path: str, is_file):
         return False
 
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+
 class Main:
+
+    @staticmethod
+    def check_queue(queue_):
+
+        while queue_.qsize():
+
+            try:
+
+                msg = queue_.get(False)
+
+                if msg[0] != '':
+                    print(msg[0])
+
+                if msg[0] == 'Listo':
+                    print(msg[0])
+
+            except queue_.empty():
+                pass
+
     def __init__(self, master, root_path):
         # tkinter root
         self.master = master
@@ -79,6 +116,12 @@ class Main:
         # window parameters
         self.master.title("Módulo de Demanda - COPROLAC")
         self.master.configure(background=bg_color)
+
+        # ttk parameters
+        ttk_style = ttk.Style()
+        ttk_style.configure('TFrame', background='white')
+        ttk_style.configure('FrameGreen.TFrame', background='green')
+        # ttk_style.configure('TNotebook', background='green')
 
         # screen width and height, and toplevel width and height
         self.screen_width = GetSystemMetrics(0)
@@ -177,12 +220,12 @@ class Main:
         # --- Level 0 --- Contains the Paned Window, the Tree View and the Main Frame
 
         # Frame for top control buttons
-        self.button_control_frame = LabelFrame(self.master, bg=bg_color)
-        self.button_control_frame.pack(fill=X)
+        self.frame_btn_control = LabelFrame(self.master, bg=_from_rgb((0, 128, 61)))
+        self.frame_btn_control.pack(fill=X)
 
         # Button for a new template
-        self.img_new = PhotoImage(file=r"C:\icons\new.png")
-        self.btn_new = Button(self.button_control_frame,
+        self.img_new = PhotoImage(file=resource_path(r'res\new.png'))
+        self.btn_new = Button(self.frame_btn_control,
                               text='Nuevo',
                               image=self.img_new,
                               compound='left',
@@ -193,8 +236,8 @@ class Main:
         self.btn_new.pack(side=LEFT)
 
         # Button to open a file
-        self.img_open = PhotoImage(file=r"C:\icons\open.png")
-        self.btn_open = Button(self.button_control_frame,
+        self.img_open = PhotoImage(file=resource_path(r'res\open.png'))
+        self.btn_open = Button(self.frame_btn_control,
                                text='Abrir',
                                image=self.img_open,
                                compound='left',
@@ -205,12 +248,8 @@ class Main:
         self.btn_open.pack(side=LEFT)
 
         # Button to export files
-        if self.mode == '':
-            btn_save_state = 'disabled'
-        else:
-            btn_save_state = 'normal'
-        self.img_save = PhotoImage(file=r"C:\icons\save.png")
-        self.btn_save = Button(self.button_control_frame,
+        self.img_save = PhotoImage(file=resource_path(r'res\save.png'))
+        self.btn_save = Button(self.frame_btn_control,
                                text='Exportar',
                                image=self.img_save,
                                compound='left',
@@ -218,12 +257,12 @@ class Main:
                                width=75,
                                padx=10,
                                command=self.open_window_export,
-                               state=btn_save_state)
+                               state='normal')
         self.btn_save.pack(side=LEFT)
 
         # Button to refresh the views
-        self.img_refresh = PhotoImage(file=r"C:\icons\refresh.png")
-        self.btn_refresh = Button(self.button_control_frame,
+        self.img_refresh = PhotoImage(file=resource_path(r'res\refresh.png'))
+        self.btn_refresh = Button(self.frame_btn_control,
                                   text='Refrescar',
                                   image=self.img_refresh,
                                   compound='left',
@@ -234,51 +273,64 @@ class Main:
         self.btn_refresh.pack(side=LEFT)
 
         # Button to run a process
-        if self.mode in ['Demand', 'Model']:
+        if self.mode in ['Demand', 'Demand_Agent']:
             btn_run_state = 'normal'
         else:
             btn_run_state = 'disabled'
-        self.img_run = PhotoImage(file=r"C:\icons\run.png")
-        self.btn_run = Button(self.button_control_frame,
+        self.img_run = PhotoImage(file=resource_path(r'res\run.png'))
+        self.btn_run = Button(self.frame_btn_control,
                               text='Ejecutar',
                               image=self.img_run,
                               compound='left',
                               bg=bg_color,
                               width=75,
                               padx=10,
-                              command=self.run_optimizer,
+                              command=lambda: self.run_optimizer(self.active_process),
                               state=btn_run_state)
         self.btn_run.pack(side=LEFT)
 
         # Horizon Label
-        self.lbl_horizon = Label(self.button_control_frame, text='Horizonte:', bg=bg_color)
-        self.lbl_horizon.pack(side=LEFT, padx=(10, 0))
+        self.lbl_horizon = Label(self.frame_btn_control,
+                                 text='Horizonte:',
+                                 fg=bg_color,
+                                 font=("Calibri Light", 14),
+                                 bg=_from_rgb((0, 128, 61)))
+        self.lbl_horizon.pack(side=LEFT,
+                              padx=(10, 0))
 
         # Spinbox to select the amount of periods to forecast in the future
         saved_periods_fwd = self.back_end.config_shelf.send_parameter('periods_fwd')
         var = DoubleVar(value=int(saved_periods_fwd))
-        self.spinbox_periods = Spinbox(self.button_control_frame, from_=0, to=500, textvariable=var)
+        self.spinbox_periods = Spinbox(self.frame_btn_control, from_=0, to=500, textvariable=var)
         self.spinbox_periods.pack(side=LEFT)
 
         # Horizon label
-        self.lbl_days = Label(self.button_control_frame, text='días', bg=bg_color)
-        self.lbl_days.pack(side=LEFT)
+        self.lbl_days = Label(self.frame_btn_control,
+                              text='días',
+                              fg=bg_color,
+                              font=("Calibri Light", 14),
+                              bg=_from_rgb((0, 128, 61)))
+        self.lbl_days.pack(side=LEFT,
+                           padx=(10, 0))
 
         # Label for the combobox
-        Label(self.button_control_frame,
+        Label(self.frame_btn_control,
               text='Despliegue:',
-              bg=bg_color).pack(padx=10, side=LEFT)
+              fg=bg_color,
+              font=("Calibri Light", 14),
+              bg=_from_rgb((0, 128, 61))).pack(padx=(50, 0), side=LEFT)
 
         # Combobox: Changes time frequency to daily, weekly, monthly
         # This option changes the table and plot LOD
         freqs_ = ['Diario',
                   'Semanal',
                   'Mensual']
-        self.combobox_time_freq = ttk.Combobox(self.button_control_frame,
+        self.combobox_time_freq = ttk.Combobox(self.frame_btn_control,
                                                value=freqs_)
         self.combobox_time_freq.current(0)
         self.combobox_time_freq.bind("<<ComboboxSelected>>",
-                                     self.refresh_views)
+                                     lambda event: self.refresh_views(event, ('Granularidad',
+                                                                              self.combobox_time_freq.get())))
         self.combobox_time_freq.pack(padx=10,
                                      side=LEFT)
 
@@ -290,15 +342,21 @@ class Main:
 
         # Tree View declaration, double click is binded to the tree view
         self.tree_view = ttk.Treeview(self.master)
-        self.tree_view.bind("<Double-1>", self.refresh_views)
+
+        self.frame_filters = ttk.Frame(self.master,
+                                       style='TFrame')
+        self.frame_filters.pack(fill=BOTH,
+                                expand=True)
+
+        # self.tree_view.bind("<Double-1>", self.refresh_views)
 
         # declare columns for the Tree View
-        self.tree_view['columns'] = '1'
-        self.tree_view.column('1', anchor='w')
+        # self.tree_view['columns'] = '1'
+        #  self.tree_view.column('1', anchor='w')
 
         # declare headings for the Tree View
-        self.tree_view['show'] = 'headings'
-        self.tree_view.heading('1', text='Producto', anchor='w')
+        # self.tree_view['show'] = 'headings'
+        # self.tree_view.heading('1', text='Producto', anchor='w')
 
         # Main Frame declaration, on the right of the tree view, inside the Paned Window
         self.main_frame = Frame(self.paned_win_main,
@@ -314,11 +372,17 @@ class Main:
 
         # Add the tree view and te main frame to the Paned Window, and pack it to fill the screen
         self.paned_win_main.pack(fill=BOTH, expand=True)
-        self.paned_win_main.add(self.tree_view)
+        # self.paned_win_main.add(self.tree_view)
+        self.paned_win_main.add(self.frame_filters)
         # self.paned_win_main.add(self.main_frame)
         self.paned_win_main.add(self.main_frame)
 
         # --- Level 1 --- Top and Bottom Frames
+
+        #
+        temp_text = 'Cargue archivos para ver algo aquí.'
+        self.temp_label = Label(self.main_frame,
+                                text=temp_text)
 
         # Top Frame that covers the top half of the screen
         # Contains the Table Frame
@@ -326,9 +390,6 @@ class Main:
                                borderwidth=2,
                                width=150,
                                relief="groove",
-                               # self.main_frame,
-                               # width=self.table_width,
-                               # height=self.top_frame_height,
                                bg=bg_color)
 
         # Bottom Frame that contains the bottom half of the screen
@@ -337,9 +398,6 @@ class Main:
                                   borderwidth=2,
                                   width=150,
                                   relief="groove",
-                                  # self.main_frame,
-                                  # width=self.table_width,
-                                  # height=self.bottom_frame_height,
                                   bg=bg_color)
 
         # Pack the Top and Bottom Frames
@@ -350,63 +408,56 @@ class Main:
         # Table Frame that contains the pandastable
         # Packed to the Top Frame
         self.frame_table = Frame(self.top_frame,
-                                 # width=self.table_width,
-                                 # height=self.top_frame_height,
                                  bg=bg_color)
         self.frame_table.pack(fill='both',
                               expand=True,
-                              # anchor='n'
                               )
 
         # Frame that contains the Notebook
         self.frame_notebook = Frame(self.bottom_frame,
-                                    # width=self.plot_width,
-                                    # height=self.bottom_frame_height,
                                     bg=bg_color)
         self.frame_notebook.pack(fill='both', expand=True, side=LEFT)
 
         # Notebook contains the Raw Data plot, the Model plot and the Metrics Tab
         # User switches between tabs as needed
         # Model and Metrics tabs default to disabled, as user needs to run the optimizer before seeing data there
+        # Notebook declaration
         self.notebook_plotting = ttk.Notebook(self.frame_notebook)
+
+        # Tab declaration
         self.tab_data_plot = ttk.Frame(self.notebook_plotting)
         self.tab_model_plot = ttk.Frame(self.notebook_plotting)
         self.tab_metrics = ttk.Frame(self.notebook_plotting)
-        self.notebook_plotting.add(self.tab_data_plot, text='Datos')
-        self.notebook_plotting.add(self.tab_model_plot, text='Modelo', state='disabled')
-        self.notebook_plotting.add(self.tab_metrics, text='Métricas', state='disabled')
+
+        # Add tabs to Notebook and pack the notebook to the frame
+        self.notebook_plotting.add(self.tab_data_plot,
+                                   text='Datos')
+        self.notebook_plotting.add(self.tab_model_plot,
+                                   text='Modelo',
+                                   state='disabled')
+        self.notebook_plotting.add(self.tab_metrics,
+                                   text='Métricas',
+                                   state='disabled')
         self.notebook_plotting.pack(fill=BOTH,
                                     expand=1)
 
         # Metrics Frame, contains three columns
         # Metric Name | Metric Value | Metric Description
         self.metrics_frame = Frame(self.tab_metrics)
-        self.metrics_frame.pack(fill='y',
-                                # expand=True
-                                )
+        self.metrics_frame.pack(fill='y')
         self.metrics_frame.columnconfigure((0, 1, 2), uniform='equal', weight=1)
-
-        # --- Level 3 --- Time Granularity Combobox, N Periods Entry, Refresh Views Button
 
         # Automatic load on boot, uses the last known Mode setting, Demand or Forecast
         # Loads data accordingly
         process_ = self.back_end.config_shelf.send_parameter('Mode')
         self.update_gui(process_)
 
-        center_window(self.master, self.screen_width, self.screen_height)
+        # Center the tkinter window on screen
+        center_window(self.master,
+                      self.screen_width,
+                      self.screen_height)
 
     def pack_to_main_frame(self):
-
-        # Pack the Top Frame
-        # Fill the x axis
-        # self.top_frame.pack(fill='x',
-        #                    # expand=True,
-        #                    anchor='n')
-
-        # Pack the Bottom Frame, fill the x axis
-        # self.bottom_frame.pack(fill='x',
-        #                       expand=True,
-        #                       anchor='s')
 
         self.paned_win_tbl_plot.add(self.top_frame)
         self.paned_win_tbl_plot.add(self.bottom_frame)
@@ -417,27 +468,153 @@ class Main:
         except AttributeError:
             pass
 
-    def populate_tree(self, item_list):
+    def update_gui(self, process: str):
         """
-        Insert row for every item in the list."""
+        Function is called on init or after loading new data.
 
-        # Populate the tree view with the items inside the item_list
-        for i in item_list:
-            self.tree_view.insert("", "end", text=i, values=(i,))
+        Update the GUI based on the process parameter.
+        Enable or disable buttons according to process parameter.
+        Read the data and separate it into subsets on the backend based on the process_ parameter.
 
-    def clear_tree(self):
-        """Clear information from the tree view."""
+        Clear the tree view and populate it with the subset keys.
+        Call the show_plot_and_table function to show the loaded data on the plot and the table.
+        """
 
-        self.tree_view.delete(*self.tree_view.get_children())
+        # clear GUI
+        self.clear_gui()
 
-    def get_tree_selection(self):
-        """Get selected item from the tree view, if not available, returns DEFAULT."""
+        # --- MENU STATES ---
+        # Enable the Segmentation menu option when the process is Forecast
+        if process == 'Forecast':
+            segment_btn_state = 'normal'
+        else:
+            segment_btn_state = 'disabled'
+        self.sub_menu_config.entryconfig('Segmentación',
+                                         state=segment_btn_state)
+
+        # --- MASTER BUTTON STATES ---
+
+        # Enable save, refresh buttons for every process
+        self.btn_refresh['state'] = 'normal'
+
+        # Enable Run button for Demand, Demand Agent and Model processes
+        if process in ['Demand', 'Demand_Agent']:
+            btn_run_state = 'normal'
+            btn_save_state = 'disabled'
+        else:
+            btn_run_state = 'disabled'
+            btn_save_state = 'normal'
+
+        self.btn_save['state'] = btn_save_state
+        self.btn_run['state'] = btn_run_state
 
         try:
-            item = self.tree_view.selection()[0]
-            return self.tree_view.item(item, "text")
-        except IndexError:
-            return 'DEFAULT'
+            # the path to the data has been validated, so the data can be separated into several datasets
+            # process must be specified to read the correct filepath
+            self.back_end.create_input_df(process)
+
+            # Pack Top and Bottom Frames to the Main Frame
+            self.pack_to_main_frame()
+
+            # self.populate_tree(item_list)
+            self.add_filters(process)
+
+            # call function to update the plot and the table on the GUI
+            self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
+
+        # if the segmented data sets haven't been created, clear the GUI
+        except (KeyError, ValueError, FileNotFoundError, PermissionError) as e:
+            self.open_window_pop_up('Error', e)
+            self.clear_gui()
+
+    def add_filters(self, process: str):
+        """
+        Add filters to the filters frame on the left panel.
+        The filters added depend on the process parameter.
+        """
+
+        self.lbl_name_agent = Label(self.frame_filters,
+                                    bg=bg_color,
+                                    text='Agente')
+
+        self.cbx_agent = ttk.Combobox(self.frame_filters,
+                                      value=self.back_end.available_agents,
+                                      width=40)
+
+        self.lbl_name_prod = Label(self.frame_filters,
+                                   bg=bg_color,
+                                   text='Producto')
+
+        if process == 'Demand_Agent':
+            agent = self.back_end.available_agents[0]
+            prod_list = self.back_end.prods_per_agent[agent]
+
+        else:
+            prod_list = list(self.back_end.dict_products.values())
+
+        self.cbx_prod = ttk.Combobox(self.frame_filters,
+                                     value=prod_list,
+                                     width=40)
+
+        # If process is Demand_Agent add an extra Agent filter on top
+        if process == 'Demand_Agent':
+            self.lbl_name_agent.grid(row=0,
+                                     column=0)
+            self.cbx_agent.current(0)
+            self.cbx_agent.bind("<<ComboboxSelected>>",
+                                self.cbx_agent_callback)
+            self.cbx_agent.grid(row=1,
+                                column=0)
+
+            row_lbl_prod = 2
+            row_cbx_prod = 3
+
+        else:
+            row_lbl_prod = 0
+            row_cbx_prod = 1
+
+        # Add the product filter (label and combobox.
+        self.lbl_name_prod.grid(row=row_lbl_prod,
+                                column=0)
+        self.cbx_prod.current(0)
+        self.cbx_prod.bind("<<ComboboxSelected>>",
+                           self.refresh_views)
+        self.cbx_prod.grid(row=row_cbx_prod,
+                           column=0)
+
+    def cbx_agent_callback(self, event):
+        """Callback for the agent filter combobox."""
+
+        # Get the selected agent from the combobox.
+        agent = self.cbx_agent.get()
+
+        # Refresh the GUI (table and plot)
+        self.refresh_views(event)
+
+        # Change the content of the product filter.
+        # Shown products depend on the agent's context.
+        self.configure_product_filter(self.back_end.prods_per_agent[agent])
+
+    def get_sku_name(self, sku):
+        """Returns the SKU name for an SKU."""
+
+        df_master = self.back_end.df_master_data
+        sku_name = df_master[df_master['Codigo'] == sku]['Nombre']
+
+        return sku_name
+
+    def get_sku(self, sku_name):
+        """Returns the SKU for an SKU name."""
+
+        df_master = self.back_end.df_master_data
+        sku = df_master[df_master['Nombre'] == sku_name]['Codigo']
+
+        return sku
+
+    def configure_product_filter(self, product_list: list):
+        """Change the product filter based on the agent's context."""
+
+        self.cbx_prod['values'] = product_list
 
     def clear_gui(self):
         """Function to clear data from the back end and the GUI."""
@@ -456,7 +633,10 @@ class Main:
         self.btn_run.config(state='disabled')
 
         # Clear information from the tree view
-        self.clear_tree()
+        # self.clear_tree()
+
+        for widget in self.frame_filters.winfo_children():
+            widget.destroy()
 
         # Unpack the top and bottom frames
         # Unpack the temporary label to avoid having more than one temporary labels active, if the user clicks New
@@ -465,14 +645,72 @@ class Main:
             self.top_frame.pack_forget()
             self.bottom_frame.pack_forget()
             self.temp_label.pack_forget()
+            self.paned_win_tbl_plot.pack_forget()
 
         except AttributeError:
             pass
 
         # Add a Label telling user to load files on the Top and Bottom Frames
-        temp_text = 'Cargue archivos para ver algo aquí.'
-        self.temp_label = Label(self.paned_win_tbl_plot, text=temp_text)
         self.temp_label.pack(fill=BOTH, expand=True)
+
+    def show_plot_and_table(self, process, filters: list, event):
+        """
+        Call the create figure function with the data of the passed sku parameter.
+
+        sku: name of the SKU or DEFAULT, if DEFAULT, shows the currently selected SKU on the tree view
+        plot_type: Demand plots the raw data, Forecast shows the fitted values and the forecast.
+        """
+
+        # If the process parameter is Demand, Forecast or Metrics, use the segmented data sets from the backend.
+        if process in ['Demand', 'Forecast', 'Metrics', 'Demand_Agent']:
+            df_total = self.back_end.df_total_input
+
+        # If the process parameter is Model, use the fitted data sets from the backend.
+        else:
+            df_total = self.back_end.df_total_demand_fcst
+
+        if process in ['Demand_Agent', 'Model_Agent']:
+            agent = filters[1]
+            if agent == 'DEFAULT':
+                agent = self.back_end.available_agents[0]
+            df_total = df_total[df_total['Agente'] == agent]
+
+        # Get selected data frame based on the sku parameter.
+        sku_name = filters[0]
+
+        if sku_name == 'DEFAULT':
+            sku_name = self.back_end.list_product_names[0]
+
+        # Filter by product
+        df = df_total[df_total['Nombre'] == sku_name]
+
+        # Group the dataframe by date. The aggregation is controlled by the Combobox combobox_time_freq selection.
+        if self.combobox_time_freq.get() == 'Semanal':
+            strf_format = 'Semana %U'
+            df = df.groupby(pd.Grouper(freq='1W')).sum()
+        elif self.combobox_time_freq.get() == 'Mensual':
+            strf_format = '%b-%Y'
+            df = df.groupby(pd.Grouper(freq='M')).sum()
+        else:
+            strf_format = '%d/%m/%Y'
+
+        # Create a formatted string column based on the date.
+        # The format depends on level of aggregation.
+        df = df.reset_index()
+        df = df.rename(columns={'index': 'Fecha'})
+        df['Fecha_strf'] = df['Fecha'].dt.strftime(strf_format)
+        df = df.set_index('Fecha')
+
+        # Show the data on the table.
+        self.show_table(df, process)
+
+        # call function to show plot on the bottom frame
+        self.create_fig(df, process)
+
+        if process == 'Model':
+            self.create_fig(df, 'Demand')
+        elif process == 'Model_Agent':
+            self.create_fig(df, 'Demand_Agent')
 
     def create_fig(self, df, plot_type):
         """
@@ -490,15 +728,16 @@ class Main:
 
         # If the plot type is Demand or Forecast:
         # Data is packed into the data plot widget.
-        if plot_type in ['Demand', 'Forecast', 'Metrics']:
+        if plot_type in ['Demand', 'Demand_Agent', 'Forecast', 'Metrics']:
             if self.data_plot is not None:
                 self.data_plot.get_tk_widget().destroy()
             if self.data_toolbar is not None:
                 self.data_toolbar.destroy()
 
-            self.figure_data = Figure(figsize=(x, y), dpi=dpi)
-            self.ax_data = self.figure_data.add_subplot(1, 1, 1)
+            self.figure_data = Figure(figsize=(x, y),
+                                      dpi=dpi)
 
+            self.ax_data = self.figure_data.add_subplot(1, 1, 1)
             self.data_plot = FigureCanvasTkAgg(self.figure_data, self.tab_data_plot)
             self.data_toolbar = NavigationToolbar2Tk(self.data_plot, self.tab_data_plot)
             self.data_toolbar.update()
@@ -530,43 +769,113 @@ class Main:
         except KeyError:
             pass
 
-        # If the plot type is Demand or Forecast, use a single axis plot.
+        # Styles declaration
+        brand_green = '#005c2c'  # ticheese green
+        yellow = '#ffff00'
+        orange = '#e5a700'
+        title_font_size = 20
+        title_font_weight = 'medium'
+
+        # If the plot type is Demand or Forecast, create a single axis plot.
         # Names change based on the plot type.
-        if plot_type in ['Demand', 'Forecast']:
-            if plot_type == 'Demand':
+        if plot_type in ['Demand', 'Demand_Agent', 'Forecast']:
+            if plot_type in ['Demand', 'Demand_Agent']:
                 y_name = 'Demanda'
                 plot_title = 'Demanda Real'
             else:
                 y_name = plot_title = 'Pronóstico'
 
-            df.plot(x='Fecha', y=y_name, legend=False, ax=self.ax_data)
-            self.ax_data.set_ylabel('Cantidad (kg)')
-            self.ax_data.set_title(plot_title)
+            df.plot(x='Fecha',
+                    y=y_name,
+                    legend=False,
+                    ax=self.ax_data,
+                    color=brand_green)
 
+            # Set title and title color
+            self.ax_data.set_title(plot_title,
+                                   fontdict={'fontsize': title_font_size,
+                                             'fontweight': title_font_weight})
+            self.ax_data.title.set_color(brand_green)
+
+            # Set y label
+            self.ax_data.set_ylabel('Cantidad (kg)')
+
+        # If the plot type is Metrics, create a double axis plot.
         if plot_type == 'Metrics':
-            # df = df.drop(columns=['Error'])
-            df.plot(x='Fecha', y='Demanda', color='b', ax=self.ax_data)
-            df.plot(x='Fecha', y='Pronóstico', color='r', ax=self.ax_data)
-            self.ax_data.set_ylabel('Cantidad (kg)')
-            self.ax_data.set_title('Demanda Real y Pronóstico')
+            df.plot(x='Fecha',
+                    y='Demanda',
+                    color=brand_green,
+                    ax=self.ax_data)
 
-        # If the plot type is Model, use a triple axis plot.
-        if plot_type == 'Model':
+            df.plot(x='Fecha',
+                    y='Pronóstico',
+                    color=orange,
+                    ax=self.ax_data)
+
+            # Set title and title color
+            self.ax_data.set_title('Demanda Real vs. Pronóstico',
+                                   fontdict={'fontsize': title_font_size,
+                                             'fontweight': title_font_weight})
+            self.ax_data.title.set_color(brand_green)
+
+            # Set y label
+            self.ax_data.set_ylabel('Cantidad (kg)')
+
+        # If the plot type is Model, create a 5-axis plot.
+        if plot_type in ['Model', 'Model_Agent']:
+            df = df[['Fecha', 'Demanda', 'Ajuste', 'Pronóstico', 'Min', 'Max']]
             col = ['Fecha', 'Demanda', 'Modelo', 'Pronóstico', 'Min', 'Max']
             df.columns = col
             dates = df['Fecha'].values
 
-            df.plot(x=col[0], y=col[1], color='b', ax=self.ax_model)
-            df.plot(x=col[0], y=col[2], color='r', ax=self.ax_model)
-            df.plot(x=col[0], y=col[3], color='g', ax=self.ax_model)
-            df.plot(x=col[0], y=col[4], color='g', ax=self.ax_model)
-            df.plot(x=col[0], y=col[5], color='g', ax=self.ax_model)
+            # Add Demand plot
+            df.plot(x=col[0],
+                    y=col[1],
+                    color=brand_green,
+                    ax=self.ax_model)
+
+            # Add Model plot, fitted values
+            df.plot(x=col[0],
+                    y=col[2],
+                    color=yellow,
+                    ax=self.ax_model)
+
+            # Add forecast plot (mean values)
+            df.plot(x=col[0],
+                    y=col[3],
+                    color=orange,
+                    ax=self.ax_model)
+
+            # Add forecast plot (minimum values)
+            df.plot(x=col[0],
+                    y=col[4],
+                    color=orange,
+                    ax=self.ax_model)
+
+            # Add forecast plot (maximum values)
+            df.plot(x=col[0],
+                    y=col[5],
+                    color=orange,
+                    ax=self.ax_model)
+
+            # Set legend
             self.ax_model.legend(['Demanda', 'Ajuste', 'Pronóstico'], loc='lower center', ncol=3)
 
-            self.ax_model.fill_between(dates, df[col[4]], df[col[5]], alpha=0.5, facecolor='green')
+            # Fill forecast plot, between minimum and maximum values
+            self.ax_model.fill_between(dates,
+                                       df[col[4]],
+                                       df[col[5]],
+                                       alpha=0.5,
+                                       facecolor=orange)
 
+            # Set plot title and color
+            self.ax_model.set_title('Demanda Real y Pronóstico',
+                                    fontdict={'fontsize': title_font_size,
+                                              'fontweight': title_font_weight})
+            self.ax_model.title.set_color(brand_green)
+
+            # Set y label
             self.ax_model.set_ylabel('Cantidad (kg)')
-            self.ax_model.set_title('Demanda Real y Pronóstico')
 
     def show_table(self, df, table_type):
         """
@@ -590,30 +899,33 @@ class Main:
 
         # If the table type is Demand or Forecast, drop the code and name values as they are redundant.
         # There can only be one selected item on the tree view.
-        if table_type in ['Demand', 'Forecast', 'Metrics']:
-            try:
-                df.drop(columns=['Codigo', 'Nombre'], inplace=True)
-            # when the models havent been trained, the df only contains the values column
-            except KeyError:
-                pass
+        cols = ['Codigo', 'Nombre']
+        if table_type in ['Demand_Agent', 'Model_Agent']:
+            cols = cols + ['Agente']
+        try:
+            df.drop(columns=cols, inplace=True)
+        # when the models haven't been trained, the df only contains the values column
+        except KeyError:
+            pass
 
-        # If the table type is Model fill null values with "-" and round numbers to two places.
-        elif table_type == 'Model':
+        # If the table type is Model fill null values with "-".
+        if table_type in ['Model', 'Model_Agent']:
             df = df.fillna('-')
-            df = df.round(2)
 
-        # Transpose the table.
+        # Round numbers to two places.
+        # df = df.round(2)
+
+        # Transpose the table, show dates as columns in a timeline format.
         df = df.T
 
-        # Destroy widgets inside the Table Frame before packing the new one.
+        # Destroy widgets inside the Table Frame before packing the new Table.
         for widget in self.frame_table.winfo_children():
             widget.destroy()
 
         # Declare the pandas table widget.
-        #
         self.pd_table = pandastable.Table(self.frame_table,
                                           dataframe=df,
-                                          showtoolbar=False,
+                                          showtoolbar=True,
                                           showstatusbar=True)
 
         # Show the table.
@@ -622,55 +934,11 @@ class Main:
         self.pd_table.show()
         self.pd_table.redraw()
 
-    def show_plot_and_table(self, sku, process, event):
-        """
-        Call the create figure function with the data of the passed sku parameter.
-
-        sku: name of the SKU or DEFAULT, if DEFAULT, shows the currently selected SKU on the tree view
-        plot_type: Demand plots the raw data, Forecast shows the fitted values and the forecast.
-        """
-
-        # If the process parameter is Demand or Forecast, use the segmented data sets from the backend.
-        if process in ['Demand', 'Forecast', 'Metrics']:
-            sep_df_dict = self.back_end.segmented_data_sets
-        # If the process parameter is Model, use the fitted datasets from the backend.
-        else:
-            sep_df_dict = self.back_end.dict_fitted_dfs
-
-        # Get selected data frame based on the sku parameter.
-        # If sku is DEFAULT use the first item on the tree view.
-        if sku == 'DEFAULT':
-            temp_sku = list(sep_df_dict.keys())[0]
-            df = sep_df_dict[temp_sku]
-        else:
-            df = sep_df_dict[sku]
-
-        # Group the dataframe by date. The aggregation is controlled by the Combobox combobox_time_freq selection.
-        if self.combobox_time_freq.get() == 'Semanal':
-            strf_format = 'Semana %U'
-            df = df.groupby(pd.Grouper(freq='1W')).sum()
-        elif self.combobox_time_freq.get() == 'Mensual':
-            strf_format = '%b-%Y'
-            df = df.groupby(pd.Grouper(freq='M')).sum()
-        else:
-            strf_format = '%d/%m/%Y'
-
-        # Create a formatted string column based on the date.
-        # The format depends on level of aggregation.
-        df = df.reset_index()
-        df['Fecha_strf'] = df['Fecha'].dt.strftime(strf_format)
-        df = df.set_index('Fecha')
-
-        # Show the data on the table.
-        self.show_table(df, process)
-
-        # call function to show plot on the bottom frame
-        self.create_fig(df, process)
-
     def update_periods_fwd(self):
         """
         Check if the user changed the periods forward parameter.
-        If changed, update the parameter on the backend."""
+        If changed, update the parameter on the backend.
+        """
 
         # get the actual value from the spinbox
         new_periods_fwd = int(self.spinbox_periods.get())
@@ -679,7 +947,7 @@ class Main:
         if new_periods_fwd != self.back_end.config_shelf.send_parameter('periods_fwd'):
             self.back_end.config_shelf.write_to_shelf('periods_fwd', new_periods_fwd)
 
-    def run_optimizer(self):
+    def run_optimizer(self, process: str):
         """Spawns the optimizer thread to train the models based on the actual data."""
 
         # update the periods_fwd parameter in the back end
@@ -691,35 +959,47 @@ class Main:
         if operation_canceled is False:
             # spawn the thread which finds the best model
             # uses a thread to avoid freezing the program
-            self.spawn_thread('Optimizador')
+            self.spawn_thread(process)
 
     def spawn_thread(self, process):
-        """Create ThreadedClient class and pass it to a periodic call function."""
+        """
+        Create ThreadedClient class and pass it to a periodic call function.
+        """
 
-        if process == 'Optimizador':
-            # self.btn_run_optimizer.config(state='disabled')
-            queue_ = queue.Queue()
+        queue_ = queue.Queue()
+        thread = ThreadedClient(queue_,
+                                self.back_end,
+                                process)
+        thread.start()
 
-            thread = ThreadedClient(queue_, self.back_end, process)
-            thread.start()
+        # Create new window that shows the training status with a Listbox.
+        self.new_win = Toplevel(self.master)
+        self.new_win.overrideredirect(1)
+        WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
+                       self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
 
-            self.new_win = Toplevel(self.master)
-            self.new_win.overrideredirect(1)
-            WindowTraining(self.new_win, self.back_end, queue_, thread, self.screen_width,
-                           self.screen_height)
-            self.new_win.grab_set()
-            self.master.wait_window(self.new_win)
+        # Enable the model tab in the plot section
+        self.notebook_plotting.tab(self.tab_model_plot, state='normal')
 
-            self.notebook_plotting.tab(self.tab_model_plot, state='normal')
+        # Change the active process
+        if process == 'Demand':
+            self.active_process = model_process = 'Model'
+        else:
+            self.active_process = model_process = 'Model_Agent'
 
-            self.show_plot_and_table('DEFAULT', 'Model', 0)
+        # Call function to show the plot and the table with the default filter selection.
+        self.show_plot_and_table(model_process, ['DEFAULT', 'DEFAULT'], 0)
 
-            # enable the metrics tab
-            self.update_metrics('DEFAULT')
-            self.model_ready = True
+        # enable the metrics tab
+        self.update_metrics(process, ['DEFAULT', 'DEFAULT'])
+        self.model_ready = True
+
+        # enable the export button
+        self.btn_save['state'] = 'normal'
 
     def periodic_call(self, process, thread, queue_):
-
         self.check_queue(queue_)
 
         if thread.is_alive():
@@ -730,142 +1010,102 @@ class Main:
                 # self.btn_run_optimizer.config(state='active')
                 pass
 
-    def check_queue(self, queue_):
-
-        while queue_.qsize():
-
-            try:
-
-                msg = queue_.get(False)
-
-                if msg[0] != '':
-                    print(msg[0])
-
-                if msg[0] == 'Listo':
-                    print(msg[0])
-
-            except queue_.empty():
-                pass
-
-    def refresh_views(self, event):
-        """Refresh the views on the GUI based on the tree view selection."""
+    def refresh_views(self, event, *args):
+        """Refresh the views on the GUI based on the filter selection."""
 
         # If the model is ready:
         # 1. Update the periods forward on the back end.
         # 2. Refresh predictions with the new periods forward parameter.
         if self.model_ready:
             self.update_periods_fwd()
-            self.back_end.refresh_predictions()
+            self.back_end.refresh_predictions(self.active_process)
 
         # Get the selected item from the tree view.
-        item_name = self.get_tree_selection()
+        # item_name = self.get_tree_selection()
+        sku_name = self.cbx_prod.get()
+        filters = [sku_name]
+        try:
+            agent = self.cbx_agent.get()
+            filters = [sku_name, agent]
+        except AttributeError:
+            pass
 
         # Populate the plot and the table based on the selected item.
-        self.show_plot_and_table(item_name, self.active_process, event)
+        if self.active_process == 'Model':
+            process = 'Demand'
+        elif self.active_process == 'Model_Agent':
+            process = 'Demand_Agent'
+        else:
+            process = self.active_process
 
-        # If the fitted datasets from the back end aren't empty.
-        # Show the Model plot and table and update the metrics.
-        if self.back_end.dict_fitted_dfs != {}:
-            self.show_plot_and_table(item_name, 'Model', event)
-            self.update_metrics(item_name)
+        # If the fitted datasets from the back end aren't empty
+        # show the Model plot and table and update the metrics.
+        if not self.back_end.df_total_fitted.empty:
+            self.show_plot_and_table(self.active_process, filters, event)
+            self.update_metrics(self.active_process, filters)
 
-    def update_metrics(self, sku):
+        else:
+            self.show_plot_and_table(process, filters, event)
 
-        # change state of the metrics tab of the notebook
+    def update_metrics(self, process: str, filters: list):
+        # change state of the  tab of the notebook
         self.notebook_plotting.tab(self.tab_metrics, state='normal')
 
-        # get the model data frames
-        sep_df_dict = self.back_end.dict_fitted_dfs
+        df_metrics = self.back_end.df_total_metrics.merge(self.back_end.df_master_data,
+                                                          on='Codigo')
 
-        # if sku parameter is default use the first key of the dictionary
-        # which represents the first data frame
+        if process in ['Demand_Agent', 'Model_Agent']:
+            agent = filters[1]
+            if agent == 'DEFAULT':
+                agent = self.back_end.available_agents[0]
+            df_metrics = df_metrics[df_metrics['Agente'] == agent]
+
+        sku = filters[0]
+
         if sku == 'DEFAULT':
-            sku = list(sep_df_dict.keys())[0]
+            sku = self.back_end.list_product_names[0]
 
-        # get the metrics list from the metrics dictionary
-        metrics_dict = self.back_end.dict_metrics[sku]
+        df_metrics = df_metrics[df_metrics['Nombre'] == sku]
 
-        # position the metric on a grid in the metrics tab
-        # first column is the name of the metric
-        # second column is the rounded value of the metric
-        # third column is the description of the metric
-        Label(self.metrics_frame, text='Métrica', padx=10).grid(row=0,
-                                                                column=0,
-                                                                padx=10,
-                                                                pady=5)
-        Label(self.metrics_frame, text='Valor', padx=10).grid(row=0,
-                                                              column=1,
-                                                              padx=10,
-                                                              pady=5)
-        Label(self.metrics_frame, text='Descripción', padx=10).grid(row=0,
-                                                                    column=2,
-                                                                    padx=10,
-                                                                    pady=5)
+        for widget in self.metrics_frame.winfo_children():
+            widget.pack_forget()
 
-        for idx, (metric, value) in enumerate(metrics_dict.items(), 1):
-            Label(self.metrics_frame, text=metric, padx=10).grid(row=idx,
-                                                                 column=0,
-                                                                 padx=10,
-                                                                 pady=5)
+        # Declare self.treeview
+        self.treev = ttk.Treeview(self.metrics_frame, selectmode='browse')
+        self.treev.pack(side='top')
 
-            rounded_val = round(float(value), 2)
-            Label(self.metrics_frame, text=rounded_val, padx=10).grid(row=idx,
-                                                                      column=1,
-                                                                      padx=10,
-                                                                      pady=5)
+        # Configure self.treeview
+        self.treev['columns'] = ('1', '2')
+        self.treev['show'] = 'headings'
+        self.treev.column("1", width=250, anchor='c')
+        self.treev.column("2", width=90, anchor='se')
 
-            metric_desc = self.back_end.dict_metric_desc[metric]
-            Label(self.metrics_frame, text=metric_desc, padx=10, wraplength=250).grid(row=idx,
-                                                                                      column=2,
-                                                                                      padx=10,
-                                                                                      pady=5)
+        self.treev.heading("1", text="Métrica")
+        self.treev.heading("2", text="Valor")
 
-    def update_gui(self, process_: str):
-        """
-        Update the GUI based on the process parameter.
-        Read the data and separate it into subsets on the backend based on the process_ parameter.
-        Clear the tree view and populate it with the subset keys.
-        Call the show_plot_and_table function to show the loaded data on the plot and the table.
-        """
+        # Double click callback
+        self.treev.bind('<Double-1>', self.treeview_callback)
 
-        # enable or disable buttons according to process
-        if process_ in ['Demand', 'Model']:
-            self.btn_run['state'] = 'normal'
-        else:
-            self.btn_run['state'] = 'disabled'
+        for idx, metric in enumerate(list(df_metrics.columns)):
 
-        # Enable save, refresh buttons
-        self.btn_save['state'] = 'normal'
-        self.btn_refresh['state'] = 'normal'
+            if metric in ['Codigo', 'Agente', 'Nombre', 'Unidad_Medida']:
+                pass
 
-        if process_ == 'Forecast':
-            self.sub_menu_config.entryconfig('Segmentación',
-                                             state='normal')
-        else:
-            self.sub_menu_config.entryconfig('Segmentación',
-                                             state='disabled')
+            else:
+                metric_name, metric_desc = self.back_end.dict_metric_desc[metric]
+                value = round(float(df_metrics[[metric]].values), 2)
 
-        try:
-            # the path to the data has been validated, so the data can be separated into several datasets
-            # process must be specified to read the correct filepath
-            self.back_end.create_segmented_data(process_)
+                self.treev.insert('', 'end', text=metric,
+                                  values=(metric_name, value))
 
-            # clear tree view
-            self.clear_tree()
+    def treeview_callback(self, event):
+        """Callback upon double click of a tree view item."""
 
-            # Pack Top and Bottom Frames to the Main Frame
-            self.pack_to_main_frame()
+        item = self.treev.selection()
+        metric_name, metric_desc = self.back_end.dict_metric_desc[self.treev.item(item, "text")]
+        # print("you clicked on", self.treev.item(metric, "text"))
 
-            # get items from the segmented data sets dictionary to populate the tree view
-            item_list = list(self.back_end.segmented_data_sets.keys())
-            self.populate_tree(item_list)
-
-            # call function to update the plot and the table on the GUI
-            self.show_plot_and_table('DEFAULT', process_, 0)
-
-        # if the segmented datasets haven't been created, clear the GUI
-        except (KeyError, ValueError):
-            self.clear_gui()
+        self.open_window_pop_up('Info', f'{metric_name}: {metric_desc}')
 
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
@@ -911,7 +1151,11 @@ class Main:
 
         if process_ in ['Demand', 'Model'] and self.model_ready is False:
             warning = 'El modelo se debe entrenar antes de exportar la información.'
-            WindowPopUpMessage(self.new_win, 'Alerta', warning, self.screen_width, self.screen_height)
+            WindowPopUpMessage(self.new_win,
+                               'Alerta',
+                               warning,
+                               self.screen_width,
+                               self.screen_height)
 
         else:
             WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height, process_)
@@ -947,8 +1191,27 @@ class Main:
 
         return win_obj.canceled
 
+    def open_window_pop_up(self, title, msg):
+        # open new TopLevel as a popup window
+        self.new_win = Toplevel(self.master)
+        WindowPopUpMessage(self.new_win,
+                           title,
+                           msg,
+                           self.screen_width,
+                           self.screen_height)
+
+        # freeze master window until user closes the pop up
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
 
 class WindowSelectWorkPath:
+
+    @staticmethod
+    def remove_section_from_grid(widgets_list: list):
+        """Remove widget list from the grid."""
+        for widget in widgets_list:
+            widget.grid_forget()
 
     def __init__(self, master, app: Application, screen_width_, screen_height_):
         self.master = master
@@ -1010,25 +1273,24 @@ class WindowSelectWorkPath:
 
         # Routine Frame
         # Selection Combobox, second column,  to choose which type of file to open, demand or forecast
-        file_types = ['Demanda',
-                      'Pronóstico',
-                      'Métricas']
-        self.cbx_file_type = ttk.Combobox(self.routine_frame,
-                                          value=file_types)
+        self.modes_user_options = ['Crear pronóstico de demanda',
+                                   'Segmentar pronóstico de demanda',
+                                   'Calcular métricas',
+                                   'Crear pronóstico por agente']
+        self.back_end_modes = self.app.modes
 
-        if self.last_process == 'Demand':
-            idx = 0
-        elif self.last_process == 'Forecast':
-            idx = 1
-        else:
-            idx = 2
+        self.cbx_file_type = ttk.Combobox(self.routine_frame,
+                                          value=self.modes_user_options,
+                                          width=50)
+
+        idx = self.back_end_modes.index(self.last_process)
 
         self.cbx_file_type.current(idx)
 
         self.cbx_file_type.bind("<<ComboboxSelected>>", self.cbx_callback)
         self.cbx_file_type.grid(row=0,
                                 column=1,
-                                columnspan=2,
+                                columnspan=3,
                                 padx=10,
                                 pady=10,
                                 sticky='WE')
@@ -1037,44 +1299,90 @@ class WindowSelectWorkPath:
 
         #  ROW 0: LABEL THAT SHOWS THE PATH
 
-        self.add_first_path_to_grid(self.last_process, 0)
+        # Name Label, first column
+        self.lbl_name_path = Label(self.paths_frame,
+                                   text='',
+                                   bg=bg_color,
+                                   padx=5)
 
-        # ROW 1: CHECKBUTTON TO APPLY BOM OR NOT
-        if self.last_process == 'Demand':
-            self.add_bom_checkbox()
+        # Path Label, second column
+        self.lbl_path = Label(self.paths_frame,
+                              text='',
+                              bg=bg_color,
+                              pady=10,
+                              borderwidth=2,
+                              width=150,
+                              relief="groove",
+                              anchor='w')
 
-            # if the BOM explosion parameter on the backend is true, select the checkbutton
-            # and add the BOM section to the grid
-            if self.app.config_shelf.send_parameter('BOM_Explosion'):
-                self.cb_bom.select()
-                self.add_second_path_to_grid(self.last_process, 2)
-            else:
-                self.cb_bom.deselect()
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse = Button(self.paths_frame,
+                                 text='...',
+                                 command=lambda: self.browse_files('Level_1'))
 
-        elif self.last_process == 'Metrics':
-            self.add_second_path_to_grid(self.last_process, 1)
+        # Name Label
+        self.lbl_name_cb_bom = Label(self.paths_frame,
+                                     text='Aplicar recetas?',
+                                     bg=bg_color,
+                                     padx=5,
+                                     anchor='w')
 
-        else:
-            self.add_second_path_to_grid(self.last_process, 1)
+        # Checkbutton to control the BOM Explosion parameter
+        self.cb_bom_state = IntVar()
+        self.cb_bom = Checkbutton(self.paths_frame,
+                                  variable=self.cb_bom_state,
+                                  bg=bg_color,
+                                  command=self.cb_callback)
 
-        # ROW 3: LABEL THAT SHOWS THE BOM PATH, ONLY APPLIES TO THE METRICS PROCESS
-        if self.last_process == 'Metrics':
-            self.add_third_path_to_grid(3)
+        self.lbl_name_second_path = Label(self.paths_frame,
+                                          text='',
+                                          bg=bg_color,
+                                          padx=5)
+
+        self.lbl_second_path = Label(self.paths_frame,
+                                     text='',
+                                     bg=bg_color,
+                                     pady=10,
+                                     borderwidth=2,
+                                     width=150,
+                                     relief="groove",
+                                     anchor=W)
+
+        self.btn_browse_second_path = Button(self.paths_frame,
+                                             text='...',
+                                             command=lambda: self.browse_files('Level_2'))
+
+        self.lbl_name_third_path = Label(self.paths_frame,
+                                         text='Recetas:',
+                                         bg=bg_color,
+                                         padx=5)
+
+        self.lbl_third_path = Label(self.paths_frame,
+                                    text='',
+                                    bg=bg_color,
+                                    pady=10,
+                                    borderwidth=2,
+                                    width=150,
+                                    relief="groove",
+                                    anchor=W)
+
+        self.btn_browse_third_path = Button(self.paths_frame,
+                                            text='...',
+                                            command=lambda: self.browse_files('Level_3'))
+
+        self.add_to_grid(self.last_process)
 
         center_window(self.master, self.screen_width, self.screen_height)
 
     def add_first_path_to_grid(self, process: str, row: int):
 
-        if process in ['Demand', 'Metrics']:
+        if process in ['Demand', 'Metrics', 'Demand_Agent']:
             lbl_name = 'Ventas:'
         else:
             lbl_name = 'Pronóstico:'
 
         # Name Label, first column
-        self.lbl_name_path = Label(self.paths_frame,
-                                   text=lbl_name,
-                                   bg=bg_color,
-                                   padx=5)
+        self.lbl_name_path['text'] = lbl_name
 
         # Name Label, first column
         self.lbl_name_path.grid(row=row,
@@ -1086,14 +1394,8 @@ class WindowSelectWorkPath:
             path = self.app.get_path('Metrics_Demand')
         else:
             path = self.app.get_path(process)
-        self.lbl_path = Label(self.paths_frame,
-                              text=path,
-                              bg=bg_color,
-                              pady=10,
-                              borderwidth=2,
-                              width=150,
-                              relief="groove",
-                              anchor='w')
+
+        self.lbl_path['text'] = path
 
         # Path Label, second column
         self.lbl_path.grid(row=row,
@@ -1101,11 +1403,6 @@ class WindowSelectWorkPath:
                            padx=10,
                            pady=10,
                            sticky='WE')
-
-        # Browse Button, third column, to open the browse files window
-        self.btn_browse = Button(self.paths_frame,
-                                 text='...',
-                                 command=lambda: self.browse_files('Level_1'))
 
         # Browse Button, third column, to open the browse files window
         self.btn_browse.grid(row=row,
@@ -1122,91 +1419,51 @@ class WindowSelectWorkPath:
         else:
             lbl_name = 'Recetas:'
 
-        self.lbl_name_second_path = Label(self.paths_frame,
-                                          text=lbl_name,
-                                          bg=bg_color,
-                                          padx=5)
+        self.lbl_name_second_path['text'] = lbl_name
 
         self.lbl_name_second_path.grid(row=row,
-                                       column=0)
+                                       column=0,
+                                       sticky='W')
 
         # BOM Path Label
         if process == 'Metrics':
             path = self.app.get_path('Metrics_Forecast')
         else:
             path = self.app.get_path('BOM')
-        self.lbl_second_path = Label(self.paths_frame,
-                                     text=path,
-                                     bg=bg_color,
-                                     pady=10,
-                                     borderwidth=2,
-                                     width=150,
-                                     relief="groove",
-                                     anchor=W)
+
+        self.lbl_second_path['text'] = path
 
         self.lbl_second_path.grid(row=row,
                                   column=1,
                                   padx=10,
                                   pady=10)
 
-        self.btn_browse_second_path = Button(self.paths_frame,
-                                             text='...',
-                                             command=lambda: self.browse_files('Level_2'))
         self.btn_browse_second_path.grid(row=row,
                                          column=2)
 
     def add_third_path_to_grid(self, row: int):
 
-        self.lbl_name_third_path = Label(self.paths_frame,
-                                         text='Recetas:',
-                                         bg=bg_color,
-                                         padx=10)
-
         self.lbl_name_third_path.grid(row=row,
                                       column=0,
                                       sticky='W')
 
-        self.lbl_third_path = Label(self.paths_frame,
-                                    text=self.app.get_path('BOM'),
-                                    bg=bg_color,
-                                    pady=10,
-                                    borderwidth=2,
-                                    width=150,
-                                    relief="groove",
-                                    anchor=W)
+        self.lbl_third_path['text'] = self.app.get_path('BOM')
 
         self.lbl_third_path.grid(row=row,
                                  column=1,
                                  padx=10,
                                  pady=10)
 
-        self.btn_browse_third_path = Button(self.paths_frame,
-                                            text='...',
-                                            command=lambda: self.browse_files('Level_3'))
         self.btn_browse_third_path.grid(row=row,
                                         column=2)
 
-    def add_bom_checkbox(self):
+    def add_bom_checkbox(self, row: int):
         """If the combobox == Demand, add this section to the grid."""
 
-        # Name Label
-        self.lbl_name_cb_bom = Label(self.paths_frame,
-                                     text='Aplicar recetas?',
-                                     bg=bg_color,
-                                     padx=5,
-                                     anchor='w')
-
-        self.lbl_name_cb_bom.grid(row=2,
+        self.lbl_name_cb_bom.grid(row=row,
                                   column=0)
 
-        # Checkbutton to control the BOM Explosion parameter
-        self.cb_bom_state = IntVar()
-        self.cb_bom = Checkbutton(self.paths_frame,
-                                  variable=self.cb_bom_state,
-                                  bg=bg_color,
-                                  command=self.cb_callback)
-
-        self.cb_bom.grid(row=2,
+        self.cb_bom.grid(row=row,
                          column=1)
 
     def browse_files(self, label_name):
@@ -1231,6 +1488,16 @@ class WindowSelectWorkPath:
             elif label_name == 'Level_3':
                 self.lbl_third_path.configure(text=filename)
 
+    def get_process_from_cbx_selection(self):
+
+        selected_option = self.cbx_file_type.get()
+
+        selected_idx = self.modes_user_options.index(selected_option)
+
+        selected_process = self.back_end_modes[selected_idx]
+
+        return selected_process
+
     def save_selection(self):
         """"""
 
@@ -1238,15 +1505,9 @@ class WindowSelectWorkPath:
         if self.lbl_path['text'] == '':
             self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
 
-        # The combobox value defines the process to be run on the backend.
-        if self.cbx_file_type.get() == 'Demanda':
-            self.process = process = 'Demand'
-        elif self.cbx_file_type.get() == 'Métricas':
-            self.process = process = 'Metrics'
-        else:
-            self.process = process = 'Forecast'
+        self.process = self.get_process_from_cbx_selection()
 
-        if process == 'Metrics':
+        if self.process == 'Metrics':
 
             lbl_dict_metrics = {self.lbl_path: ['Metrics_Demand', 'Ventas'],
                                 self.lbl_second_path: ['Metrics_Forecast', 'Pronóstico'],
@@ -1260,14 +1521,16 @@ class WindowSelectWorkPath:
                     self.open_window_pop_up('Error',
                                             f'El directorio al archivo de {values[1]} indicado es inválido.')
 
-
         else:
+            # Get selected path
             curr_first_path = self.lbl_path['text']
+
+            # Validate the path before saving
             if validate_path(curr_first_path, is_file=True):
                 # set selected path to the Demand key of the paths shelf
-                self.app.set_path(process, curr_first_path)
+                self.app.set_path(self.process, curr_first_path)
 
-                if process == 'Demand':
+                if self.process == 'Demand':
                     # set the selected parameter to the BOM_Explosion key of the parameters shelf
                     self.app.set_parameter('BOM_Explosion', bool(self.cb_bom_state.get()))
 
@@ -1285,10 +1548,10 @@ class WindowSelectWorkPath:
 
         # create separate datasets for each of the unique products
         try:
-            self.app.create_segmented_data(process)
-            self.open_window_pop_up('Mensaje', 'Archivos cargados.')
+            # self.app.create_input_df(self.process) # todo: should not be run here
+            # self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
-            self.app.set_parameter('Mode', process)
+            self.app.set_parameter('Mode', self.process)
             self.close_window()
 
         except ValueError as e:
@@ -1304,34 +1567,31 @@ class WindowSelectWorkPath:
         except AttributeError:
             pass
 
-    def remove_section_from_grid(self, widgets_list: list):
-        """Remove widget list from the grid."""
-        for widget in widgets_list:
-            widget.grid_forget()
-
     def cbx_callback(self, event):
 
+        # Remove all widgets from the Frame that contains the path labels
         self.remove_children_from_paths_frame()
 
-        selected_process = self.cbx_file_type.get()
+        # Get the back end process selected by the user.
+        selected_process = self.get_process_from_cbx_selection()
 
-        mapping = {'Demanda': 'Demand',
-                   'Pronóstico': 'Forecast',
-                   'Métricas': 'Metrics'}
+        self.add_to_grid(selected_process)
 
-        self.add_first_path_to_grid(mapping[selected_process], 0)
+    def add_to_grid(self, process: str):
 
-        if selected_process == 'Demanda':
+        self.add_first_path_to_grid(process, 0)
 
-            if selected_process == 'Demanda':
-                self.add_bom_checkbox()
+        if process == 'Demand':
+            self.add_bom_checkbox(1)
 
-                if self.cb_bom_state.get():
-                    self.add_second_path_to_grid(mapping[selected_process], 1)
+            if self.app.config_shelf.send_parameter('BOM_Explosion'):
+                self.cb_bom.select()
+                self.add_second_path_to_grid(process, 2)
+            else:
+                self.cb_bom.deselect()
 
-        elif selected_process == 'Métricas':
-
-            self.add_second_path_to_grid(mapping[selected_process], 1)
+        elif process == 'Metrics':
+            self.add_second_path_to_grid(process, 1)
             self.add_third_path_to_grid(3)
 
     def cb_callback(self):
@@ -1345,7 +1605,11 @@ class WindowSelectWorkPath:
     def open_window_pop_up(self, title, msg):
         # open new TopLevel as a popup window
         self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
+        WindowPopUpMessage(self.new_win,
+                           title,
+                           msg,
+                           self.screen_width,
+                           self.screen_height)
 
         # freeze master window until user closes the pop up
         self.new_win.grab_set()
@@ -1440,6 +1704,11 @@ class WindowSegmentOptions:
         self.entries_values = []
         self.delete_buttons = []
 
+        # Button declaration
+        self.add_seg_btn = Button(self.main_frame,
+                                  text='+',
+                                  command=self.add_segment)
+
         # Get groups and values from the backend, convert them to separate lists to access the indices
         # and keep them ordered
         self.orig_segment_dict = self.app.get_parameter('Segmentacion')
@@ -1468,7 +1737,7 @@ class WindowSegmentOptions:
 
         try:
             for widget in self.main_frame.winfo_children():
-                widget.destroy()
+                widget.grid_forget()
         except AttributeError:
             pass
 
@@ -1529,11 +1798,6 @@ class WindowSegmentOptions:
     def pack_add_button(self):
         """Add a button to the last row on the grid where a Value Entry exists."""
 
-        # Button declaration
-        self.add_seg_btn = Button(self.main_frame,
-                                  text='+',
-                                  command=self.add_segment)
-
         # Place it in the grid, on the row equal to the length of the groups list
         self.add_seg_btn.grid(row=len(self.groups),
                               column=3)
@@ -1541,7 +1805,7 @@ class WindowSegmentOptions:
     def remove_last_button(self):
         """Remove the last button on the grid."""
 
-        self.add_seg_btn.destroy()
+        self.add_seg_btn.grid_remove()
 
     def add_segment(self):
         """Add a segment to the list."""
@@ -1585,7 +1849,11 @@ class WindowSegmentOptions:
 
     def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win, title, msg, self.screen_width, self.screen_height)
+        WindowPopUpMessage(self.new_win,
+                           title,
+                           msg,
+                           self.screen_width,
+                           self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -1600,22 +1868,32 @@ class WindowPopUpMessage:
         self.width = self.screen_width_ / 5
         self.height = self.screen_height_ / 4
 
-        # --- NIVEL 0 ---
-
-        # Label para desplegar el mensaje
-        self.message = Label(self.master,
-                             text=message,
-                             bg=bg_color,
-                             padx=100,
-                             pady=50,
-                             font=("Calibri Light", 12))
-        self.message.pack()
+        # --- LEVEL 0 ---
+        # Frame with border that contains the message and the button.
+        self.main_frame = Frame(self.master,
+                                bg=bg_color,
+                                padx=20,
+                                pady=20,
+                                borderwidth=2,
+                                relief='groove')
+        self.main_frame.pack(padx=20,
+                             pady=20)
 
         # Boton para aceptar y cerrar
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
                                  command=self.close_window)
         self.btn_accept.pack(padx=10, pady=10)
+
+        # --- LEVEL 1 ---
+
+        # Label para desplegar el mensaje
+        self.message = Label(self.main_frame,
+                             text=message,
+                             bg=bg_color,
+                             font=("Calibri Light", 12))
+        self.message.pack(padx=20,
+                          pady=20)
 
         center_window(self.master, self.screen_width_, self.screen_height_)
 
@@ -1634,28 +1912,46 @@ class WindowPopUpMessageWithCancel:
         self.height = self.screen_height_ / 4
         self.canceled = True
 
-        # --- NIVEL 0 ---
+        # --- LEVEL 0 ---
 
+        # Frame with border that contains the message and Accept-Cancel Buttons
+        self.main_frame = Frame(self.master,
+                                bg=bg_color,
+                                padx=20,
+                                pady=20,
+                                borderwidth=2,
+                                relief='groove')
+        self.main_frame.grid(row=0,
+                             column=0,
+                             columnspan=2,
+                             padx=5,
+                             pady=5)
+
+        # Boton para aceptar y cerrar
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=lambda: self.close_window('Aceptar'))
+        self.btn_accept.grid(row=1,
+                             column=0,
+                             pady=(0, 5))
+
+        # Boton para aceptar y cerrar
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=lambda: self.close_window('Cancelar'))
+        self.btn_cancel.grid(row=1,
+                             column=1,
+                             pady=(0, 5))
+
+        # --- LEVEL 1 ---
         # Label para desplegar el mensaje
-        self.message = Label(self.master,
+        self.message = Label(self.main_frame,
                              text=message,
                              bg=bg_color,
                              padx=100,
                              pady=50,
                              font=("Calibri Light", 12))
         self.message.pack()
-
-        # Boton para aceptar y cerrar
-        self.btn_accept = Button(self.master,
-                                 text='Aceptar',
-                                 command=lambda: self.close_window('Aceptar'))
-        self.btn_accept.pack(padx=10, pady=10)
-
-        # Boton para aceptar y cerrar
-        self.btn_cancel = Button(self.master,
-                                 text='Cancelar',
-                                 command=lambda: self.close_window('Cancelar'))
-        self.btn_cancel.pack(padx=10, pady=10)
 
         center_window(self.master, self.screen_width_, self.screen_height_)
 
@@ -1791,7 +2087,8 @@ class WindowTraining:
 
         # listbox to print status
         self.listbox = Listbox(self.master,
-                               width=100)
+                               width=150,
+                               height=20)
         self.listbox.pack()
 
         # progress bar to show progress
@@ -1825,8 +2122,6 @@ class WindowTraining:
                 if msg[1] > 0:
                     self.progress_bar['value'] = msg[1]
 
-                print(f'Progress: {msg[1]}')
-
             except self.queue_.empty:
                 pass
 
@@ -1844,6 +2139,7 @@ class WindowExportFile:
         self.height = screen_height / 5
         self.thread_ = None
         self.process = process
+        self.new_win = None
 
         # configure columns
         self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
@@ -1862,10 +2158,12 @@ class WindowExportFile:
         self.btn_path.grid(row=0, column=0, pady=5, sticky='WE')
 
         self.entry_output_file = Entry(self.frame_master)
-        if process == 'Demand' or self.process == 'Model':
+        if process in ['Demand', 'Model']:
             file_name = self.app.config_shelf.send_parameter('File_name')
         elif process == 'Forecast':
             file_name = self.app.config_shelf.send_parameter('File_name_segmented')
+        elif process in ['Demand_Agent', 'Model_Agent']:
+            file_name = self.app.config_shelf.send_parameter('File_name_agent')
         else:
             file_name = self.app.config_shelf.send_parameter('File_name_metrics')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
@@ -1880,7 +2178,10 @@ class WindowExportFile:
         self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='WE')
 
         # Button to accept
-        self_btn_accept = Button(self.frame_master, text='Guardar', padx=10, command=self.call_backend_export)
+        self_btn_accept = Button(self.frame_master,
+                                 text='Guardar',
+                                 padx=10,
+                                 command=self.call_backend_export)
         self_btn_accept.grid(row=2, column=1, padx=10)
 
         # center window on screen
@@ -1892,14 +2193,28 @@ class WindowExportFile:
         try:
             self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_, self.process)
             new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win, 'Mensaje', 'Archivo exportado.', self.screen_width, self.screen_height)
+            WindowPopUpMessage(new_win,
+                               'Mensaje',
+                               'Archivo exportado.',
+                               self.screen_width,
+                               self.screen_height)
             new_win.grab_set()
             self.master.wait_window(new_win)
 
         except ValueError:
             new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win, 'Advertencia', 'Debe ejecutar el pronóstico antes'
-                                                       ' de exportar la información.',
+            WindowPopUpMessage(new_win,
+                               'Advertencia',
+                               'Debe ejecutar el pronóstico antes de exportar la información.',
+                               self.screen_width,
+                               self.screen_height)
+            new_win.grab_set()
+            self.master.wait_window(new_win)
+
+        except PermissionError:
+            new_win = Toplevel(self.master)
+            WindowPopUpMessage(new_win, 'Error', 'Hay un archivo con el mismo nombre abierto.\n'
+                                                 'Debe cerrarlo antes de proceder.',
                                self.width, self.height)
             new_win.grab_set()
             self.master.wait_window(new_win)
@@ -1910,33 +2225,9 @@ class WindowExportFile:
         # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
         # this window is closed
         self.new_win = Toplevel(self.master)
-        WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
-
-    def spawn_thread(self):
-        pass
-
-    def periodic_call(self):
-
-        self.check_queue()
-
-        if self.thread_.is_alive():
-            self.master.after(100, self.periodic_call)
-
-        else:
-            # close window
-            self.close_window()
-
-    def check_queue(self):
-        while self.queue_.qsize():
-            try:
-                msg = self.queue_.get(False)
-                if msg[1] > 0:
-                    pass
-
-            except self.queue_.empty:
-                pass
 
     def close_window(self):
         self.master.destroy()
@@ -1951,23 +2242,23 @@ class WindowExportFile:
 
 
 class ThreadedClient(threading.Thread):
-    def __init__(self, queue, application: Application, process):
+    def __init__(self, queue_, application: Application, process):
         threading.Thread.__init__(self)
-        self.queue = queue
+        self.queue = queue_
         self.application = application
         self.process = process
         self.daemon = True
 
     def run(self):
-        if self.process == 'Optimizador':
-            self.application.get_best_models(self.queue)
-            self.application.evaluate_fit()  # todo: temporary
+        self.application.fit_forecast_evaluate_pipeline(self.process, self.queue)
+
 
 
 if __name__ == '__main__':
-    path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
+    install_path = os.path.join(os.path.expanduser("~"), r'AppData\Roaming\Modulo_Demanda')
 
     root = Tk()
+    root.iconbitmap(resource_path(r'res/icon.ico'))
     root.state('zoomed')
-    Main(root, path)
+    Main(root, install_path)
     root.mainloop()
