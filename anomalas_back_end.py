@@ -8,6 +8,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl import Workbook
+import sys
 
 pd.options.mode.chained_assignment = None
 
@@ -80,6 +81,17 @@ def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, a
         pass
 
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+
 class FilePathShelf:
     @staticmethod
     def close_shelf(shelf: shelve):
@@ -98,6 +110,7 @@ class FilePathShelf:
         self._shelve_keys = ['Export',
                              'Orders',
                              'Anomaly_Model',
+                             'Last_Update',
                              'Temp',
                              'Export_FileName']
 
@@ -206,8 +219,10 @@ class AnomalyApp:
             # If the model has been updated by the user, the model is located in the Appdata folder.
             self.df_original_model = pd.read_csv(os.path.join(self.path_, 'Anomalas_Modelo.csv'))
         else:
+
             # If the model has not been updated by the user, the model is bundled with the executable.
-            self.df_original_model = pd.read_csv(r'data/Anomalas_Modelo.csv')
+            path_ = resource_path(r'data/Anomalas_Modelo.csv')
+            self.df_original_model = pd.read_csv(path_)
 
         # Anomaly count
         self.anomaly_count = 0
@@ -269,6 +284,11 @@ class AnomalyApp:
         # Read the new data.
         df = self.read_new_data(file)
 
+        if df.shape[1] != 11:
+            raise ValueError('El archivo indicado no tiene la cantidad de columnas esperada.\n'
+                             f'Cantidad de columnas: {df.shape[1]}.\n'
+                             f'Cantidad esperada: {11}.')
+
         # Keep columns by index.
         df = df.iloc[:, [2, 4, 5, 6, 7, 8, 9]]
 
@@ -298,6 +318,7 @@ class AnomalyApp:
 
         # Read and clean the new orders data.
         df_sales = self.clean_new_data('Orders')
+        self.order_count = df_sales.shape[0]
 
         # Create a dataframe with the new orders and the minimum and maximum acceptable values for each client-product
         # combination.
@@ -323,9 +344,17 @@ class AnomalyApp:
         df_missing = df_verification[df_verification['Min'].isna()]
         df_missing.drop(columns=cols_to_drop, inplace=True)
 
+        self.missing_count = df_missing.shape[0]
+
         # Create a table with all the normal orders.
         df_normal = df_verification[(df_verification['Alerta'] == 0) & (df_verification['Min'].notna())]
         df_normal.drop(columns=cols_to_drop, inplace=True)
+
+        # Calculate metrics
+        self.oea_with_missing = ((self.order_count - self.anomaly_count) / self.order_count) * 100
+        order_count_without_missing = self.order_count - self.missing_count
+        self.oea_without_missing = ((
+                                                order_count_without_missing - self.anomaly_count) / order_count_without_missing) * 100
 
         # save tables as attributes
         self.df_normal = df_normal
