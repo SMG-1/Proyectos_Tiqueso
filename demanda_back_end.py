@@ -9,11 +9,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pmdarima as pm
+import pmdarima.arima.arima
 
 from openpyxl.worksheet.worksheet import Worksheet
 from openpyxl.worksheet.table import Table, TableStyleInfo
 from openpyxl.utils.dataframe import dataframe_to_rows
 from openpyxl import Workbook
+
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+import statsmodels
 
 pd.options.mode.chained_assignment = None
 
@@ -29,12 +33,12 @@ def generate_testing_data():
 def get_excel_style(row, col):
     """ Convert given row and column number to an Excel-style cell name. """
 
-    LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
 
     result = []
     while col:
         col, rem = divmod(col - 1, 26)
-        result[:0] = LETTERS[rem]
+        result[:0] = letters[rem]
     return ''.join(result) + str(row)
 
 
@@ -94,6 +98,29 @@ def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, a
         pass
 
 
+def fill_dates_in_df(df: pd.DataFrame, date: datetime.date):
+    if max(df.index) != date:
+        new_cols = [np.nan for x in range(df.shape[1])]
+        df.loc[date] = new_cols
+
+    # fill missing dates with 0
+    df = df.asfreq('D')
+    df['Demanda'] = df['Demanda'].fillna(0)
+    df = df.fillna(method='ffill')
+
+    return df
+
+
+def calc_mae(data, fitted, df_index):
+
+    df_fitted = pd.DataFrame(fitted, columns=['Ajuste'], index=df_index)
+    error_df = pd.concat([data, df_fitted], axis=1)
+    error_df['Error'] = abs(error_df['Ajuste'] - error_df['Demanda'])
+    mae = error_df['Error'].mean()
+
+    return mae
+
+
 class FilePathShelf:
     @staticmethod
     def close_shelf(shelf: shelve):
@@ -115,7 +142,8 @@ class FilePathShelf:
                              'BOM',
                              'Metrics_Demand',
                              'Metrics_Forecast',
-                             'Temp']
+                             'Temp',
+                             'Demand_Agent']
 
         # try to get value from key, if empty initialize
         for _path in self._shelve_keys:
@@ -197,8 +225,9 @@ class ConfigShelf:
         # set keys list
         self.config_dict = {'periods_fwd': 30,
                             'Mode': 'Demand',
-                            'File_name': 'Pronóstico',
-                            'File_name_segmented': 'Pronóstico segmentado',
+                            'File_name': 'Pronóstico estadístico',
+                            'File_name_agent': 'Pronóstico por agente',
+                            'File_name_segmented': 'Pronóstico crítico',
                             'File_name_metrics': 'Métricas',
                             'Agg_viz': 'Diario',
                             'BOM_Explosion': False,
@@ -294,6 +323,22 @@ class ConfigShelf:
 
 class Application:
 
+    @staticmethod
+    def create_total_sku_df(df: pd.DataFrame, product_codes: list, date: datetime.date):
+
+        df_ = copy.deepcopy(df)
+
+        df_total = pd.DataFrame()
+        for unique in product_codes:
+            df_sku = df_[df_['Codigo'] == unique]
+
+            if not df_sku.empty:
+                df_sku = fill_dates_in_df(df_sku, date)
+
+            df_total = pd.concat([df_total, df_sku], axis=0)
+
+        return df_total
+
     def __init__(self, path_):
 
         # installation path
@@ -319,6 +364,10 @@ class Application:
         # product dictionary
         self.product_dict = {}
 
+        # products per agent dictionary
+        # agents are keys and products are values, there can be multiple products (list)
+        self.prods_per_agent = {}
+
         # parameter to define if BOM explosion should be applied or not
         self.bom_explosion = self.config_shelf.send_parameter('BOM_Explosion')
 
@@ -339,36 +388,62 @@ class Application:
         # feature names for the modelling data
         self.var_names = ['Demanda', 'Ajuste', 'Pronóstico']
 
+        # possible execution modes
+        self.modes = ['Demand', 'Forecast', 'Metrics', 'Demand_Agent']
+
+        # list of available products
+        self.list_product_codes = []
+        self.list_product_names = []
+        self.available_agents = []
+        self.df_master_data = pd.DataFrame()
+        self.dict_products = {}
+
+        # dataframe with sales, with empty periods filled with 0, all products
+        self.df_total_input = pd.DataFrame()
+
+        # dataframe with real sales and values fitted by the model, all products
+        self.df_total_fitted = pd.DataFrame()
+
+        # dataframe with forecasts, all products
+        self.df_total_forecasts = pd.DataFrame()
+
+        # dataframe with all historical data and forecasts
+        self.df_total_demand_fcst = pd.DataFrame()
+
+        # dataframe with all metrics
+        self.df_total_metrics = pd.DataFrame()
+
         # dictionary to store fitted models for forecasting
-        self.dict_fitted_models = {}
-
-        # dictionary to store dataframes with original data, fitted values and OOS forecast
-        self.dict_fitted_dfs = {}
-
-        # dictionary to store dataframes with forecast errors
-        self.dict_errors = {}
-
-        # dictionary to store metrics for each model
-        self.dict_metrics = {}
+        self.dict_models_sku = {}
+        self.dict_models_agent = {}
 
         # dictionary to store segmentation percentages for each product
         self.dict_segment_percentages = {}
 
         # dictionary for metric descriptions
-        self.dict_metric_desc = {'AIC': 'Criterio de información de Akaike',
-                                 'BIC': 'Criterio de información Bayesiano',
-                                 'Bias': 'Promedio del error: Un valor positivo indica una sobreestimación de la '
-                                         'demanda y viceversa.',
-                                 'MAE': 'Promedio del error absoluto: Indica el valor promedio del error en la unidad'
-                                        'de medida de los datos de entrada.',
-                                 'MAE_PERC': 'MAE Porcentual: indica el error promedio como proporción de la '
-                                             'demanda promedio.',
-                                 'MSE': 'Promedio del error cuadrático: indica el valor promedio del error elevado '
-                                        'al cuadrado.',
-                                 'RMSE': 'Raíz del error cuadrático: indica la raíz de MSE en la unidad de medida '
-                                         'de los datos de entrada.',
-                                 'RMSE_PERC': 'RMSE Porcentual: Indica el RMSE como proporción de la '
-                                              'demanda promedio.'}
+        self.dict_metric_desc = {'AIC': ['Criterio de información de Akaike',
+                                         'Utilizado para comparar modelos.'],
+                                 'BIC': ['Criterio de información Bayesiano',
+                                         'Utilizado para comparar modelos.'],
+                                 'Bias': ['Sesgo',
+                                          'Es el promedio del error un valor positivo indica\n'
+                                          'una sobreestimación de la demanda y viceversa.'],
+                                 'MAE': ['Error absoluto medio (MAE)',
+                                         'Es el promedio del error absoluto, indica el valor\n'
+                                         'promedio del error en la unidad de medida de los\n'
+                                         'datos de entrada.'],
+                                 'MAE_PERC': ['MAE Porcentual',
+                                              'Indica el error promedio como proporción de la\n'
+                                              'demanda promedio.'],
+                                 'MSE': ['Error cuadrático medio (MSE)',
+                                         'Es el promedio del error cuadrático, indica el\n'
+                                         'valor promedio del error elevado al cuadrado.'],
+                                 'RMSE': ['Raíz del error cuadrático medio (RMSE)',
+                                          'Indica la raíz de MSE en la unidad de medida '
+                                          'de los datos de entrada.'],
+                                 'RMSE_PERC': ['RMSE Porcentual',
+                                               'Indica el RMSE como proporción de la demanda\n'
+                                               ' promedio.']}
 
     def setup(self):
         if not os.path.exists(self.path_):
@@ -402,10 +477,8 @@ class Application:
     def clear_data(self):
         """Clear information from the back end."""
 
-        self.dict_fitted_models = {}
         self.dict_fitted_dfs = {}
         self.dict_errors = {}
-        self.dict_metrics = {}
 
     def read_data(self, process_: str):
         """Returns pandas dataframe with time series data."""
@@ -416,7 +489,8 @@ class Application:
         mapping = {'Demand': 'demanda',
                    'Forecast': 'pronóstico',
                    'Metrics_Demand': 'demanda',
-                   'Metrics_Forecast': 'pronóstico'}
+                   'Metrics_Forecast': 'pronóstico',
+                   'Demand_Agent': 'demanda'}
 
         # raise value error if the key is empty
         if path == '':
@@ -446,19 +520,6 @@ class Application:
         # read the data
         df = self.read_data(process_)
 
-        # Dictionary for each process, each process has a list with two items
-        # First item is the name to be displayed in the error message
-        # Second item in the list is the expected amount of columns
-        mapping = {'Demand': ['Demanda', 'Demanda', 4],
-                   'Forecast': ['Pronóstico', 'Pronóstico', 4],
-                   'Metrics_Demand': ['Demanda', 'Demanda', 4],
-                   'Metrics_Forecast': ['Pronóstico', 'Grupo-Pronóstico', 5]}
-
-        if df.shape[1] != mapping[process_][2]:
-            raise ValueError(f'El archivo de {mapping[process_][0]} indicado tiene una estructura incorrecta.\n'
-                             f'Se requieren cuatro columnas Fecha-Codigo-Nombre-{mapping[process_][1]}.\n'
-                             f'El archivo cargado tiene {df.shape[2]} columnas.')
-
         # Dictionary for each process
         # The item is another dictionary with the column mapping for each process
         col_mapping = {'Demand': ['Fecha',
@@ -468,20 +529,35 @@ class Application:
                        'Forecast': ['Fecha',
                                     'Codigo',
                                     'Nombre',
-                                    'Pronóstico'],
+                                    'Pronóstico',
+                                    'Min',
+                                    'Max'],
+                       'Metrics_Demand': ['Fecha',
+                                          'Codigo',
+                                          'Nombre',
+                                          'Demanda'],
                        'Metrics_Forecast': ['Fecha',
                                             'Codigo',
                                             'Nombre',
                                             'Grupo',
-                                            'Pronóstico']}
+                                            'Pronóstico',
+                                            'Min',
+                                            'Max'],
+                       'Demand_Agent': ['Fecha',
+                                        'Codigo',
+                                        'Nombre',
+                                        'Unidad_Medida',
+                                        'Agente',
+                                        'Demanda']}
+        file_name = col_mapping[process_][-1]
+        cols = col_mapping[process_]
 
-        # If the process is Metrics_Demand, use the same mapping as Demand
-        if process_ == 'Metrics_Demand':
-            process_cols = 'Demand'
-        else:
-            process_cols = process_
+        if df.shape[1] != len(cols):
+            raise ValueError(f'El archivo de {file_name} indicado tiene una estructura incorrecta.\n'
+                             f'Se requieren {len(cols)} columnas {"-".join(cols)}.\n'
+                             f'El archivo cargado tiene {df.shape[1]} columnas.')
 
-        df.columns = col_mapping[process_cols]
+        df.columns = col_mapping[process_]
 
         # convert first column to datetime or raise ValueError
         try:
@@ -500,7 +576,11 @@ class Application:
         df['Fecha'] = df['Fecha'].dt.date
 
         # group demand by date and categorical features (sum)
-        df = df.groupby(df.columns[:-1].to_list()).sum().reset_index()
+        # df = df.groupby(df.columns[:-1].to_list()).sum().reset_index()
+        df = df.groupby(list(df.columns[:-1])).sum().reset_index()
+
+        # Ordenar por fecha
+        df = df.sort_values(['Fecha'])
 
         # set date as index
         df.set_index(['Fecha'], inplace=True)
@@ -594,26 +674,30 @@ class Application:
         # return dataset
         return demand_bom
 
-    def create_metrics_df(self, df_demand: pd.DataFrame, df_fcst: pd.DataFrame):
+    def create_metrics_df(self, df_demand: pd.DataFrame, df_forecast: pd.DataFrame):
+        """
+        Receives a data frame with the real demand of a period and the forecast of the same period.
+        Returns a data frame with demand and forecast as columns to be able to compare both.
+        """
 
-        # Agrupar pronostico por fecha, codigo, nombre
-        df_fcst = df_fcst.groupby(['Fecha', 'Codigo', 'Nombre'])['Pronóstico'].sum().reset_index()
+        # Group the forecast by date, product code and product name, sum values.
+        df_forecast = df_forecast.groupby(['Fecha', 'Codigo', 'Nombre'])['Pronóstico'].sum().reset_index()
 
         # Create table of codes and names in case names dont match
         df_demand_names = df_demand[['Codigo', 'Nombre']]
-        df_fcst_names = df_fcst[['Codigo', 'Nombre']]
+        df_fcst_names = df_forecast[['Codigo', 'Nombre']]
         df_names = pd.concat([df_demand_names, df_fcst_names])
         df_names.drop_duplicates(subset=['Codigo'], keep='first', inplace=True)
 
-        # Unir demanda y pronostico
+        # Create joint table, using date and product code as keys, outer join.
         df_demand.drop(columns=['Nombre'], inplace=True)
-        df_fcst.drop(columns=['Nombre'], inplace=True)
-        df = df_demand.merge(df_fcst, on=['Fecha', 'Codigo'], how='outer')
+        df_forecast.drop(columns=['Nombre'], inplace=True)
+        df = df_demand.merge(df_forecast, on=['Fecha', 'Codigo'], how='outer')
 
-        # Agregar nombre
+        # Add the product name to the table using the product code as key, left join on the demand-forecast table.
         df = df.merge(df_names, on='Codigo', how='left')
 
-        # Cambiar orden de columnas
+        # Change column order
         df = df[['Fecha',
                  'Codigo',
                  'Nombre',
@@ -627,16 +711,27 @@ class Application:
         # Calculate the forecast error
         df['Error'] = df['Pronóstico'] - df['Demanda']
 
-        # set date as index
+        # Set date as index
         df.set_index(['Fecha'], inplace=True)
         df.index = pd.DatetimeIndex(df.index)
 
-        # return dataset
+        # Save data frame to class attribute.
         self.raw_data = df
 
         return df
 
-    def create_segmented_data(self, process_: str):
+    @staticmethod
+    def create_master_data_df(df, columns):
+
+        df_ = pd.DataFrame()
+        for col in columns:
+            temp_df = pd.DataFrame(df[col].unique())
+            df_ = pd.concat([df_, temp_df], axis=1)
+        df_.columns = columns
+
+        return df_
+
+    def create_input_df(self, process_: str):
         """Separate the raw data into N datasets, where N is the number of unique products in the raw data."""
 
         # Clean data upon function call, must read and clean two files
@@ -644,178 +739,152 @@ class Application:
             df_metrics_demand = self.clean_data('Metrics_Demand')
             df_metrics_demand = self.apply_bom(df_metrics_demand)
             df_metrics_fcst = self.clean_data('Metrics_Forecast')
-            df = self.create_metrics_df(df_metrics_demand, df_metrics_fcst)
+            df_input = self.create_metrics_df(df_metrics_demand, df_metrics_fcst)
 
         else:
-            df = self.clean_data(process_)
+            df_input = self.clean_data(process_)
 
-        # If bom_explosion is True, apply the BOM Explosion to the raw data
-        if self.config_shelf.send_parameter('BOM_Explosion') and process_ == 'Demand':
-            df = self.apply_bom(df)
+            # If bom_explosion is True, apply the BOM Explosion to the raw data
+            if self.config_shelf.send_parameter('BOM_Explosion') and process_ == 'Demand':
+                df_input = self.apply_bom(df_input)
 
-        # variable to set the unique values
-        var_name = 'Nombre'
+        # Create dataframe with master data for products, agents
+        if process_ == 'Demand_Agent':
+            cols = ['Codigo', 'Nombre', 'Unidad_Medida']
+        else:
+            cols = ['Codigo', 'Nombre']
+        self.df_master_data = self.create_master_data_df(df_input, cols)
 
-        # get all the unique product codes
-        unique_codes = [code for code in df.loc[:, 'Codigo'].unique()]
+        # Create two lists of unique product codes and names, combine both in a list
+        self.list_product_codes = [code for code in df_input.loc[:, 'Codigo'].unique()]
+        self.list_product_names = [name for name in df_input.loc[:, 'Nombre'].unique()]
+        self.dict_products = dict(zip(self.list_product_codes, self.list_product_names))
 
-        # get all the unique products
-        unique_products = [uni for uni in df.loc[:, var_name].unique()]
+        # If running the Demand process, reindex to fill missing dates with Demand 0.
+        if process_ == 'Demand':
+            df_input = self.create_total_sku_df(df_input, self.list_product_codes, datetime.date.today())
 
-        # create a dictionary of codes and product names
-        self.product_dict = dict(zip(unique_products, unique_codes))
-        df_list = []
+        if process_ == 'Demand_Agent':
+            # If running the Demand_Agent process, create a list of all the unique agents.
 
-        # for all the unique var_name values, get the filtered dataframe and add to list
-        for unique in unique_products:
-            df_ = df[df[var_name] == unique]
+            self.available_agents = [agent for agent in df_input.loc[:, 'Agente'].unique()]
+            df_input.drop(columns=['Unidad_Medida'], inplace=True)
 
-            if process_ == 'Demand':
-                # fill missing dates with 0
-                df_ = df_.asfreq('D')
-                df_['Demanda'].fillna(0, inplace=True)
-                df_.fillna(method='ffill', inplace=True)
+            temp_df = pd.DataFrame()
 
-            df_list.append(df_)
+            for agent in self.available_agents:
+                df_agent = df_input[df_input['Agente'] == agent]
 
-        # create total demand dataset, grouped by date
-        grouped_df = df.reset_index()
-        grouped_df = grouped_df.groupby('Fecha').sum().reset_index()
-        grouped_df = grouped_df.set_index('Fecha')
+                df_agent = self.create_total_sku_df(df_agent, self.list_product_codes, datetime.date.today())
 
-        # append grouped df to list, and label as Total
-        unique_products.append('Total')
-        df_list.append(grouped_df)
+                self.prods_per_agent[agent] = list(df_agent['Nombre'].unique())
 
-        # create dictionary from zipped lists
-        data_sets_dict = dict(zip(unique_products, df_list))
+                temp_df = pd.concat([temp_df, df_agent], axis=0)
+
+            df_input = copy.deepcopy(temp_df)
 
         # assign the dictionary to class attribute
-        self.segmented_data_sets = data_sets_dict
+        self.df_total_input = df_input
 
-    def get_best_models(self, queue_):
+    @staticmethod
+    def fit_model(demand_col, df_index):
+
+        base_mae = 0
+
+        # get the best ARIMA model for each df
+        arima_model = pm.auto_arima(demand_col,
+                                    out_of_sample_size=20,
+                                    stepwise=True)
+
+        # fit the best model to the dataset
+        arima_model = arima_model.fit(demand_col)
+        arima_mae = calc_mae(demand_col, arima_model.arima_res_.fittedvalues, df_index)
+
+        base_mae = arima_mae
+
+        # create a dataset with the fitted values
+        df_fitted = pd.DataFrame(arima_model.arima_res_.fittedvalues, columns=['Ajuste'], index=df_index)
+        model = arima_model
+
+        # get a Winter's Exponential smoothing model and calculate it's MAE
+        holt_model = ExponentialSmoothing(demand_col, freq='D')
+        holt_model = holt_model.fit()
+        holt_mae = calc_mae(demand_col, holt_model.fittedvalues, df_index)
+        if holt_mae < base_mae:
+            model = holt_model
+            df_fitted = pd.DataFrame(holt_model.fittedvalues, columns=['Ajuste'], index=df_index)
+
+        return model, df_fitted
+
+    def fit_model_sku_list(self, queue_, df_total_input, sku_list, percentage):
         """Get an optimized model for each of the separate product data sets."""
 
         # check if data is loaded
-        if self.segmented_data_sets is None:
+        if df_total_input.empty:
             raise ValueError('No hay datos cargados para crear un modelo.')
 
         # check amount of data sets to use as a way of measuring progress bar
-        num_keys = len(self.segmented_data_sets.keys())
+        num_skus = len(sku_list)
+
+        step_size = percentage / num_skus
 
         # iterate over data sets for training and predictions
-        for idx, (sku, df) in enumerate(self.segmented_data_sets.items(), 1):
-            queue_.put([f'Entrenando modelo para {sku}.', 0])
+        df_fitted_skus = pd.DataFrame()
+        dict_fitted_models_sku = {}
+        for idx, sku in enumerate(sku_list):
+            queue_.put([f'Entrenando modelo para {self.dict_products[sku]}.\n',
+                        0])
 
-            # get the best ARIMA model for each df
-            results = pm.auto_arima(df.loc[:, 'Demanda'],
-                                    out_of_sample_size=20,
-                                    stepwise=True)
-            print(results.summary())
-
-            # fit the best model to the dataset
-            fitted_model = results.fit(df.loc[:, 'Demanda'])
-
-            # save fitted model to dictionary of fitted models
-            self.dict_fitted_models[sku] = fitted_model
+            df_sku = df_total_input[df_total_input['Codigo'] == sku]
 
             # create a dataset with the real data
-            df_total = pd.DataFrame(df.loc[:, 'Demanda'], columns=['Demanda'])
+            df_sku_input = pd.DataFrame(df_sku.loc[:, 'Demanda'], columns=['Demanda'])
 
-            # create a dataset with the fitted values
-            fitted_values = pd.DataFrame(results.arima_res_.fittedvalues, columns=['Fitted'], index=df_total.index)
+            model, df_sku_fitted = self.fit_model(df_sku.loc[:, 'Demanda'], df_sku_input.index)
 
             # join the real data with the fitted values on the rows axis
-            df_total = pd.concat([df_total, fitted_values], axis=1)
+            df_sku_fitted = pd.concat([df_sku, df_sku_fitted], axis=1)
 
-            # call a function to get an out of sample prediction, result is a dataset with predictions
-            preds = self.predict_fwd(df, fitted_model)
+            # Add model to dictionary of models
+            dict_fitted_models_sku[sku] = model
 
-            # concat the predictions to the (data, fitted) dataset to get all values in one dataset
-            df_total = pd.concat([df_total, preds], axis=1)
+            df_fitted_skus = pd.concat([df_fitted_skus, df_sku_fitted], axis=0)
 
-            # change column names
-            df_total.columns = self.var_names + ['Min', 'Max']
+            queue_.put([f'Modelo para {self.dict_products[sku]} listo.\n',
+                        step_size])
 
-            # add the whole dataset to a dictionary with the product name as the key
-            self.dict_fitted_dfs[sku] = df_total
+        queue_.put(['', percentage])
 
-            queue_.put([f'Modelo para {sku} listo.\n', idx / num_keys])
+        return df_fitted_skus, dict_fitted_models_sku
 
-        queue_.put(['Listo', 1])
-
-    def evaluate_fit(self):
-        """Calculate forecasting metrics for each of the data sets with the fitted values."""
-
-        for sku, df in self.dict_fitted_dfs.items():
-            df = copy.deepcopy(df)
-
-            # error = forecast - demand
-            df.loc[:, 'Error'] = df[self.var_names[1]] - df[self.var_names[0]]
-
-            # absolute error = abs(error)
-            df.loc[:, 'Abs_Error'] = df['Error'].abs()
-
-            # squared error
-            df.loc[:, 'Squared_Error'] = df['Error'] ** 2
-
-            self.dict_errors[sku] = df
-
-            # save individual metrics to the metrics dictionary
-            print('AIC: ', self.dict_fitted_models[sku].aic())
-            print('BIC: ', self.dict_fitted_models[sku].bic())
-
-            # calculate the bias
-            bias = df['Error'].mean()
-            print('Bias:', bias)
-
-            # calculate the mean absolute error
-            mae = df['Abs_Error'].mean()
-            print('MAE: ', mae)
-
-            # calculate the mean percentage absolute error
-            mae_perc = mae / df[self.var_names[0]].mean()
-            print('MAE %: ', mae_perc)
-
-            # calculate the mean squared error
-            mse = df['Squared_Error'].mean()
-
-            # calculate the rmse
-            rmse_ = mse ** (1 / 2)
-
-            # calculate the rmse percentage
-            rmse_perc = rmse_ / df[self.var_names[0]].mean()
-
-            self.dict_metrics[sku] = {'AIC': self.dict_fitted_models[sku].aic(),
-                                      'BIC': self.dict_fitted_models[sku].bic(),
-                                      'Bias': bias,
-                                      'MAE': mae,
-                                      'MAE_PERC': mae_perc,
-                                      'MSE': mse,
-                                      'RMSE': rmse_,
-                                      'RMSE_PERC': rmse_perc}
-
-            print(f'Metrics for {sku}: ', self.dict_metrics[sku])
-
-    def predict_fwd(self, df, fitted_model):
+    def forecast(self, df, fitted_model):
         """Predict N periods forward using self.periods_fwd as N."""
 
         periods_fwd = self.config_shelf.send_parameter('periods_fwd')
 
         # create index from the max date in the original dataset to periods_fwd days forward
-        pred_index = pd.date_range(start=df.index.max(),
-                                   end=df.index.max() + datetime.timedelta(days=periods_fwd - 1))
+        pred_index = pd.date_range(start=df.index.max() + datetime.timedelta(days=1),
+                                   end=df.index.max() + datetime.timedelta(days=periods_fwd))
 
-        # predict on OOS using the fitted model, get the base prediction and the confidence interval
-        # predictions = fitted_model.predict(n_periods=periods_fwd)
-        predictions, confidence = fitted_model.predict(n_periods=periods_fwd,
-                                           return_conf_int=True)
+        if type(fitted_model) == pmdarima.arima.arima.ARIMA:
+
+            # get OOB forecast and confidence intervals
+            predictions, confidence = fitted_model.predict(n_periods=periods_fwd,
+                                                           return_conf_int=True)
+
+            # add the confidence interval (both bounds) to a DataFrame using the prediction index
+            confidence = pd.DataFrame(confidence, index=pred_index, columns=['Lower', 'Upper'])
+
+        else:
+            # If using Holt Winters use simulations to get the confidence intervals
+            predictions = fitted_model.forecast(periods_fwd)
+            confidence = fitted_model.simulate(periods_fwd, repetitions=100)
+            confidence['Lower'] = confidence.min(axis=1)
+            confidence['Upper'] = confidence.max(axis=1)
+            confidence = confidence[['Lower', 'Upper']]
 
         # add the predictions to a DataFrame using the prediction index
         predictions = pd.DataFrame(predictions, index=pred_index, columns=[self.var_names[0]])
-
-        # add the confidence interval (both bounds) to a DataFrame using the prediction index
-        confidence = pd.DataFrame(confidence, index=pred_index, columns=['Lower', 'Upper'])
 
         # allow only non-negative predictions
         predictions.loc[predictions[self.var_names[0]] < 0, self.var_names[0]] = 0
@@ -825,142 +894,375 @@ class Application:
 
         return full_preds
 
-    def refresh_predictions(self):
+    def forecast_sku_list(self, df_fitted_skus, sku_list, dict_fitted_models_sku):
 
-        if self.dict_fitted_models == {}:
-            raise NameError('No se tienen modelos entrenados, debe correr el optimizador primero.')
+        # df_total = copy.deepcopy(self.df_total_fitted)
+        df_forecast_skus = pd.DataFrame()
+        df_demand_forecast_skus = pd.DataFrame()
+
+        # check if data is loaded
+        if df_fitted_skus.empty:
+            raise ValueError('No hay datos cargados para crear un modelo.')
+
+        # iterate over data sets for training and predictions
+        for sku in sku_list:
+            df_sku = df_fitted_skus[df_fitted_skus['Codigo'] == sku]
+
+            # create a dataset with the real data
+            df_sku_input = pd.DataFrame(df_sku.loc[:, 'Demanda'], columns=['Demanda'])
+
+            # Get trained model with the sku key
+            model = dict_fitted_models_sku[sku]
+
+            # call a function to get an out of sample prediction, result is a dataset with predictions
+            df_forecast_sku = self.forecast(df_sku_input, model)
+            df_forecast_sku.columns = ['Pronóstico', 'Min', 'Max']
+
+            df_sku_forecast = copy.deepcopy(df_forecast_sku)
+            df_sku_forecast['Codigo'] = sku
+            df_sku_forecast['Nombre'] = self.dict_products[sku]
+            df_sku_forecast = df_sku_forecast[['Codigo', 'Nombre', 'Pronóstico', 'Min', 'Max']]
+
+            df_forecast_skus = pd.concat([df_forecast_skus, df_sku_forecast], axis=0)
+            df_forecast_skus = df_forecast_skus.ffill()
+
+            # concat the predictions to the (data, fitted) dataset to get all values in one dataset
+            df_sku_demand_fcst = pd.concat([df_sku, df_sku_forecast], axis=0)
+            df_demand_forecast_skus = pd.concat([df_demand_forecast_skus, df_sku_demand_fcst], axis=0)
+
+            try:
+                df_demand_forecast_skus['Agente'] = df_demand_forecast_skus['Agente'].ffill()
+            except KeyError:
+                pass
+
+        return df_forecast_skus, df_demand_forecast_skus
+
+    def calculate_metrics(self, sku, df_fitted_sku, model_sku):
+
+        df = copy.deepcopy(df_fitted_sku)
+
+        # df = df[df['Codigo'] == sku]
+
+        # error = forecast - demand
+        df.loc[:, 'Error'] = df['Ajuste'] - df['Demanda']
+
+        # absolute error = abs(error)
+        df.loc[:, 'Abs_Error'] = df['Error'].abs()
+
+        # squared error
+        df.loc[:, 'Squared_Error'] = df['Error'] ** 2
+
+        # calculate the bias
+        bias = df['Error'].mean()
+        print('Bias:', bias)
+
+        # calculate the mean absolute error
+        mae = df['Abs_Error'].mean()
+        print('MAE: ', mae)
+
+        # calculate the mean percentage absolute error
+        mae_perc = mae / df[self.var_names[0]].mean()
+        print('MAE %: ', mae_perc)
+
+        # calculate the mean squared error
+        mse = df['Squared_Error'].mean()
+
+        # calculate the rmse
+        rmse_ = mse ** (1 / 2)
+
+        # calculate the rmse percentage
+        rmse_perc = rmse_ / df[self.var_names[0]].mean()
+
+        if model_sku == statsmodels.tsa.holtwinters.results.HoltWintersResultsWrapper:
+            aic = model_sku.aic
+            bic = model_sku.bic
 
         else:
-            # get new predictions for each dataset
-            for sku, df in self.segmented_data_sets.items():
-                # get the product's fitted model
-                model = self.dict_fitted_models[sku]
+            aic = model_sku.aic
+            bic = model_sku.bic
 
-                # get the product's fitted dataset (demand, fitted values, OOS forecast)
-                total_df_old = self.dict_fitted_dfs[sku]
+        dict_metrics = {'Codigo': [sku],
+                        'AIC': [aic],
+                        'BIC': [bic],
+                        'Bias': [bias],
+                        'MAE': [mae],
+                        'MAE_PERC': [mae_perc],
+                        'MSE': [mse],
+                        'RMSE': [rmse_],
+                        'RMSE_PERC': [rmse_perc]}
+        df_metrics = pd.DataFrame(dict_metrics)
 
-                # drop old predictions from the fitted dataset
-                total_df_old = total_df_old.loc[df.index]
-                total_df_old.drop(columns=['Pronóstico', 'Min', 'Max'], inplace=True)
+        return df_metrics
 
-                # get new predictions
-                new_preds = self.predict_fwd(df, model)
+    def calculate_metrics_sku_list(self, df_fitted_skus, dict_fitted_models_sku, sku_list):
 
-                # add new predictions to the old dataset
-                total_df_new = pd.concat([total_df_old, new_preds], axis=1)
-                total_df_new.columns = self.var_names + ['Min', 'Max']
+        df_metrics_skus = pd.DataFrame()
+        for sku in sku_list:
+            model_sku = dict_fitted_models_sku[sku]
+            df_fitted_sku = df_fitted_skus[df_fitted_skus['Codigo'] == sku]
+            df_metrics_sku = self.calculate_metrics(sku, df_fitted_sku, model_sku)
+            df_metrics_skus = pd.concat([df_metrics_skus, df_metrics_sku], axis=0)
 
-                # replace the new dataset with the old one on the fitted dataframes dictionary
-                self.dict_fitted_dfs[sku] = total_df_new
+        return df_metrics_skus
+
+    def fit_forecast_evaluate_pipeline(self, process: str, queue_):
+
+        df_total_input = copy.deepcopy(self.df_total_input)
+
+        queue_.put([f'Comenzando proceso de entrenamiento.\n', 0])
+
+        if process == 'Demand':
+            sku_list = self.list_product_codes
+
+            df_fitted_skus, dict_fitted_models_sku = self.fit_model_sku_list(queue_,
+                                                                             df_total_input,
+                                                                             sku_list,
+                                                                             1)
+
+            df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
+                                                                               sku_list,
+                                                                               dict_fitted_models_sku)
+
+            df_metrics_skus = self.calculate_metrics_sku_list(df_fitted_skus,
+                                                              dict_fitted_models_sku,
+                                                              sku_list)
+
+            self.df_total_fitted = df_fitted_skus
+            self.df_total_forecasts = df_forecast_skus
+            self.df_total_demand_fcst = df_demand_forecast_skus
+            self.df_total_metrics = df_metrics_skus
+            self.dict_models_sku = dict_fitted_models_sku
+
+        if process == 'Demand_Agent':
+
+            df_fitted_agents = pd.DataFrame()
+            df_forecast_agents = pd.DataFrame()
+            df_demand_forecast_agents = pd.DataFrame()
+            df_metrics_agents = pd.DataFrame()
+            dict_models_agent = {}
+            num_agents = len(self.available_agents)
+
+            for idx, agent in enumerate(self.available_agents):
+                queue_.put([f'Entrenando modelos para {agent}.\n', 0])
+                print(f'Entrenando modelos para {agent}.\n')
+
+                df_agent = df_total_input[df_total_input['Agente'] == agent]
+
+                sku_list_agent = list(df_agent['Codigo'].unique())
+
+                df_fitted_skus, dict_fitted_models_sku = self.fit_model_sku_list(queue_,
+                                                                                 df_agent,
+                                                                                 sku_list_agent,
+                                                                                 idx / num_agents)
+                df_fitted_agents = pd.concat([df_fitted_agents, df_fitted_skus], axis=0)
+                dict_models_agent[agent] = dict_fitted_models_sku
+
+                df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
+                                                                                   sku_list_agent,
+                                                                                   dict_fitted_models_sku)
+                df_forecast_skus['Agente'] = agent
+                df_demand_forecast_skus['Agente'] = df_demand_forecast_skus['Agente'].ffill()
+
+                df_forecast_agents = pd.concat([df_forecast_agents,
+                                                df_forecast_skus],
+                                               axis=0)
+                df_demand_forecast_agents = pd.concat([df_demand_forecast_agents,
+                                                       df_demand_forecast_skus],
+                                                      axis=0)
+
+                df_metrics_skus = self.calculate_metrics_sku_list(df_fitted_skus,
+                                                                  dict_fitted_models_sku,
+                                                                  sku_list_agent)
+                df_metrics_skus['Agente'] = agent
+                df_metrics_agents = pd.concat([df_metrics_agents,
+                                               df_metrics_skus],
+                                              axis=0)
+
+                queue_.put([f'Modelo para {agent} listo.\n', idx / num_agents])
+                queue_.put(['', 0])
+
+            queue_.put([f'Proceso de entrenamiento terminado.\n', 0])
+            self.df_total_fitted = df_fitted_agents
+            self.df_total_forecasts = df_forecast_agents
+            self.df_total_demand_fcst = df_demand_forecast_agents
+            self.df_total_metrics = df_metrics_agents
+            self.dict_models_agent = dict_models_agent
+
+    def refresh_predictions(self, process):
+
+        if self.df_total_fitted.empty:
+            raise ValueError('Debe entrenar los modelos primero.')
+
+        if process in ['Demand', 'Model']:
+
+            sku_list = self.list_product_codes
+            df_fitted_skus = self.df_total_fitted
+            dict_models_sku = self.dict_models_sku
+
+            df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
+                                                                               sku_list,
+                                                                               dict_models_sku)
+
+            self.df_total_forecasts = df_forecast_skus
+            self.df_total_demand_fcst = df_demand_forecast_skus
+
+        else:
+
+            df_forecast_agents = pd.DataFrame()
+            df_fitted_agents = copy.deepcopy(self.df_total_fitted)
+            df_demand_forecast_agents = pd.DataFrame()
+            for agent in self.available_agents:
+                sku_list_agent = list(self.dict_models_agent[agent].keys())
+                df_fitted_skus = df_fitted_agents[df_fitted_agents['Agente'] == agent]
+                dict_fitted_models_sku = self.dict_models_agent[agent]
+
+                df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
+                                                                                   sku_list_agent,
+                                                                                   dict_fitted_models_sku)
+
+                df_forecast_skus['Agente'] = agent
+
+                df_forecast_agents = pd.concat([df_forecast_agents,
+                                                df_forecast_skus],
+                                               axis=0)
+                df_demand_forecast_agents = pd.concat([df_demand_forecast_agents,
+                                                       df_demand_forecast_skus],
+                                                      axis=0)
+
+            self.df_total_forecasts = df_forecast_agents
+            self.df_total_demand_fcst = df_demand_forecast_agents
 
     def export_data(self, path, file_name, extension, process):
 
         print('Exportando.')
         file_name = file_name + extension
 
+        # If the process is demand or demand agent
+        # Check if the forecast has been executed, if not raise errors.
+        if process in ['Demand', 'Demand_Agent', 'Model', 'Model_Agent']:
+            if self.df_total_forecasts.empty:
+                raise ValueError('The model has to be trained first.')
+            else:
+                df = self.df_total_forecasts
+        # If the process is Forecast or Metrics, use the input as the df to export.
+        else:
+            df = self.df_total_input
+
+        # Reset the index to get the date
+        df = df.reset_index()
+
+        try:
+            df = df.rename(columns={'index': 'Fecha'})
+        except KeyError:
+            pass
+
+        # format date
+        df['Fecha'] = df['Fecha'].dt.date
+
+        if process == 'Forecast':
+            df_segmented = pd.DataFrame()
+            segment_dict = self.get_parameter('Segmentacion')
+            for key, value in segment_dict.items():
+                df['Grupo'] = key
+                df['Pronóstico'] = df['Pronóstico'] * float(value)
+                df_segmented = pd.concat([df_segmented, df], axis=0)
+
+            df = pd.DataFrame(df_segmented)
+
+        df['Pronóstico'] = df['Pronóstico'].round(2)
+
         if process in ['Demand', 'Model']:
             col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico', 'Min', 'Max']
+            col_sizes = [12, 12, 40, 12, 12, 12]
+
+        elif process == 'Demand_Agent':
+            df = df.merge(self.df_master_data[['Codigo', 'Unidad_Medida']], on='Codigo', how='left')
+            df['Fecha creacion'] = datetime.date.today().strftime('%d-%m-%Y')
+            df['Codigo cliente'] = 'ESTIMADO'
+            df['Nombre cliente'] = 'Estimado por agente'
+            df = df.rename(columns={'Codigo': 'Codigo producto',
+                                    'Nombre': 'Nombre producto'})
+            col_order = ['Fecha creacion',
+                         'Fecha',
+                         'Agente',
+                         'Codigo producto',
+                         'Nombre producto',
+                         'Codigo cliente',
+                         'Nombre cliente',
+                         'Pronóstico',
+                         'Unidad_Medida',
+                         'Min',
+                         'Max']
+            col_sizes = [12, 12, 12, 12, 40, 12, 40, 12, 12, 12, 12]
 
         elif process == 'Forecast':
             col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
+            col_sizes = [12, 12, 40, 12, 12]
 
         else:
             col_order = ['Fecha', 'Codigo', 'Nombre', 'Demanda', 'Pronóstico', 'Error']
+            col_sizes = [12, 12, 40, 12, 12, 12]
 
-        if process == 'Demand':
-            if self.dict_fitted_dfs == {}:
-                raise ValueError('The model has to be trained first.')
-            else:
-                dict_export = dict(self.dict_fitted_dfs)
-        else:
-            dict_export = dict(self.segmented_data_sets)
-
-        df_export = pd.DataFrame()
-        for sku, df in dict_export.items():
-
-            # skip totals
-            if sku == 'Total':
-                continue
-
-            # Assign code and name based on dictionary keys
-            df['Codigo'] = self.product_dict[sku]
-            df['Nombre'] = sku
-
-            # Reset the index to get the date
-            df = df.reset_index()
-
-            # keep only rows with the forecast, drop original data
-            if process == 'Demand':
-                df = df[df['Pronóstico'].notnull()]
-                df = df.iloc[1:, :]
-
-            # format date
-            df['Fecha'] = df['Fecha'].dt.date
-
-            # if process is Forecast, the loaded forecast must be divided into subgroups
-            # for each key in the segment dictionary, a new forecast must be calculated
-            # the final forecast for each segment is then appended to a new total forecast and exported
-            if process == 'Forecast':
-                df_segmented = pd.DataFrame()
-                segment_dict = self.get_parameter('Segmentacion')
-                for key, value in segment_dict.items():
-                    df['Grupo'] = key
-                    df['Pronóstico'] = df['Pronóstico'] * float(value)
-                    df_segmented = pd.concat([df_segmented, df], axis=0)
-
-                df = pd.DataFrame(df_segmented)
-
-            # change column order
-            df = df[col_order]
-
-            df_export = pd.concat([df_export, df], axis=0)
-
-        if process == 'Metrics':
-
-            mean_demand = df_export['Demanda'].mean()
-
-            bias = df_export['Error'].mean()
-            bias_perc = bias/mean_demand
-
-            df_export['Error_Abs'] = df_export['Error'].abs()
-            mae = df_export['Error_Abs'].mean()
-            mae_perc = mae/mean_demand
-
-        df_export['Pronóstico'] = df_export['Pronóstico'].round(2)
-
-        df_export = df_export[col_order]
+        # Change column order
+        df = df[col_order]
 
         if extension == '.xlsx':
 
             wb = Workbook()
             sheet = wb.create_sheet('Pronóstico')
 
-            df_to_excel(wb, df_export, sheet, 1, as_table=True, table_name='Pronóstico')
+            df_to_excel(wb, df, sheet, 1, as_table=True, table_name='Pronóstico')
+
+            # Change column sizes.
+            change_col_sizes(sheet, col_order, col_sizes)
 
             if process == 'Metrics':
+                mean_demand = df['Demanda'].mean()
+
+                bias = df['Error'].mean()
+                bias_perc = bias / mean_demand
+
+                df['Error_Abs'] = df['Error'].abs()
+                mae = df['Error_Abs'].mean()
+                mae_perc = mae / mean_demand
+
                 metrics_sheet = wb.create_sheet('Metricas')
                 metrics_sheet['A1'] = 'Métrica'
                 metrics_sheet['B1'] = 'Valor'
 
-                metrics_sheet['A2'] = 'Sesgo'
-                metrics_sheet['B2'] = bias
-                metrics_sheet['A3'] = 'Sesgo Porcentual'
-                metrics_sheet['B3'] = bias_perc
-                metrics_sheet['A4'] = 'MAE'
-                metrics_sheet['B4'] = mae
-                metrics_sheet['A5'] = 'MAE'
-                metrics_sheet['B6'] = mae_perc
+                metrics_sheet['A2'] = 'Error Absoluto Medio'
+                metrics_sheet['B2'] = mae
+                metrics_sheet['B2'].number_format = '0.00'
+
+                metrics_sheet['A3'] = 'Error Absoluto Medio (%)'
+                metrics_sheet['B3'] = mae_perc
+                metrics_sheet['B3'].number_format = '0.00%'
+
+                metrics_sheet['A4'] = 'Sesgo'
+                metrics_sheet['B4'] = bias
+                metrics_sheet['B4'].number_format = '0.00'
+
+                metrics_sheet['A5'] = 'Sesgo (%)'
+                metrics_sheet['B5'] = bias_perc
+                metrics_sheet['B5'].number_format = '0.00%'
+
+                change_col_sizes(metrics_sheet, ['Metricas', 'Valores'], [25, 10])
 
             wb.save(os.path.join(path, file_name))
             wb.close()
 
-            # df_export.to_excel(os.path.join(path, file_name),
-            #                    sheet_name='Pronostico',
-            #                    index=False)
-
         elif extension == '.csv':
-            df_export.to_csv(os.path.join(path, file_name),
-                             index=False)
+            df.to_csv(os.path.join(path, file_name),
+                      index=False)
+
+
+def change_col_sizes(sheet, cols_: list, col_len: list):
+    letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+
+    assert len(cols_) == len(col_len)
+
+    for i in range(len(cols_)):
+        sheet.column_dimensions[letters[i]].width = col_len[i]
 
 
 if __name__ == '__main__':
