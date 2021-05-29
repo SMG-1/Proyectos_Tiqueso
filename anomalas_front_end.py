@@ -165,12 +165,28 @@ class Main:
 
         try:
             self.app.anomaly_check()
+            order_count = self.app.order_count
             anomaly_count = self.app.anomaly_count
-            self.list_box.insert(tk.END, f'{anomaly_count} anomalias encontradas.')
+            missing_count = self.app.missing_count
+            self.list_box.insert(tk.END, f'Cantidad total de órdenes: {order_count}. ')
+            self.list_box.insert(tk.END, f'Cantidad de anomalías: {anomaly_count}.')
+            self.list_box.insert(tk.END, f'Cantidad de órdenes con cliente/producto desconocido: {missing_count}.')
+            self.list_box.insert(tk.END, f'')
+            self.list_box.insert(tk.END,
+                                 f'Precisión de entrada de órdenes: {round(self.app.oea_with_missing, 2)}%.')
+            self.list_box.insert(tk.END,
+                                 f'Precisión de entrada de órdenes sin contar órdenes con procedencia desconocida :'
+                                 f' {round(self.app.oea_without_missing, 2)}%.')
+            self.list_box.insert(tk.END, f'')
+            self.list_box.insert(tk.END, f'')
+
             self.btn_export['state'] = 'active'
         except FileNotFoundError:
             self.open_window_pop_up('Error',
                                     'El archivo indicado no existe.')
+        except ValueError as e:
+            self.open_window_pop_up('Error',
+                                    e)
 
     def run_export(self):
         self.new_win = tk.Toplevel()
@@ -323,7 +339,6 @@ class WindowSelectWorkPath:
             filepath = browse_directory_master(ini_dir_)
 
             if filepath != '':
-
                 self.app.set_path('Temp', filepath)
 
                 self.lbl_path.configure(text=filepath)
@@ -331,47 +346,52 @@ class WindowSelectWorkPath:
     def save_selection(self):
         """"""
 
-        path_ = self.lbl_path['text']
-
-        # open PopUp warning if the Path Label is empty
-        if path_ == '':
-            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
-
         if self.file == 'Orders':
             is_file = True
         else:
             is_file = False
 
-        if validate_path(path_, is_file=is_file):
-            self.app.set_path(self.file, path_)
+        try:
+
+            # open PopUp warning if the Path Label is empty
+            path_ = self.lbl_path['text']
+            if path_ == '':
+                raise ValueError('Debe seleccionar un directorio válido.')
 
             if self.file == 'Export':
-               file_name = self.entry_file_name.get()
-               if file_name != '':
+                file_name = self.entry_file_name.get()
+                if file_name == '':
+                    raise ValueError('Debe seleccionar un nombre de archivo válido.')
+            else:
+                pass
+
+            if validate_path(path_, is_file=is_file):
+                self.app.set_path(self.file, path_)
+
+                if self.file == 'Export':
                     self.app.set_path('Export_FileName', file_name)
 
-            try:
-                if self.file == 'Export':
-                    self.app.export_anomaly_check()
-                    win_name = 'Archivo exportado'
-                    win_msg = 'El archivo fue exportado exitosamente.'
-                else:
-                    win_name = 'Archivo cargado.'
-                    win_msg = 'El archivo fue cargado exitosamente.'
+                try:
+                    if self.file == 'Export':
+                        self.app.export_anomaly_check()
+                        win_name = 'Archivo exportado'
+                        win_msg = 'El archivo fue exportado exitosamente.'
+                    else:
+                        win_name = 'Archivo cargado.'
+                        win_msg = 'El archivo fue cargado exitosamente.'
 
-                self.open_window_pop_up(win_name, win_msg)
-                self.successful_load = True
-                self.close_window()
+                    self.open_window_pop_up(win_name, win_msg)
+                    self.successful_load = True
+                    self.close_window()
 
-            except ValueError as e:
-                self.open_window_pop_up('Error\n', e)
+                except ValueError:
+                    raise ValueError('Directorio inválido.')
 
-            except PermissionError as e:
-                self.open_window_pop_up('Error', 'Debe cerrar el siguiente archivo antes de proceder:\n\n' + e.filename)
+                except PermissionError as e:
+                    raise PermissionError('Debe cerrar el siguiente archivo antes de proceder:\n\n' + e.filename)
 
-        else:
-            self.open_window_pop_up('Error',
-                                    f'El directorio indicado es inválido.')
+        except (ValueError, PermissionError) as e:
+            self.open_window_pop_up('Error', e)
 
     def open_window_pop_up(self, title, msg):
         # open new TopLevel as a popup window
@@ -408,23 +428,43 @@ class WindowModelConfig:
         # --- LEVEL 0 ---
 
         # Label - Shows the last time the model was updated.
-        last_update_date = datetime.datetime(2021, 4, 26).strftime('%d/%m/%Y')
+        last_update_date = self.app.get_path('Last_Update')
+        if last_update_date == '':
+            last_update_date = datetime.datetime(2021, 4, 26).strftime('%d/%m/%Y')
+
         self.status_label = tk.Label(self.master,
                                      text=f'Modelo actualizado por última vez el {last_update_date}.',
                                      bg=bg_color)
         self.status_label.grid(row=0,
                                column=0,
                                columnspan=2,
+                               padx=100,
                                pady=5)
 
         # Button - Show the path to the file that will be used to update the model.
         self.btn_update_model = tk.Button(self.master,
                                           text='Actualizar modelo',
-                                          command=lambda: self.add_path_selection_to_grid(row=2))
+                                          command=self.btn_update_callback)
         self.btn_update_model.grid(row=1,
                                    column=0,
                                    columnspan=2,
                                    pady=5)
+
+        # accept and cancel buttons
+        self.btn_accept = tk.Button(self.master,
+                                    text='Aceptar',
+                                    command=self.save_selection,
+                                    state='disabled')
+        self.btn_accept.grid(row=3,
+                             column=0,
+                             pady=5)
+
+        self.btn_cancel = tk.Button(self.master,
+                                    text='Cancelar',
+                                    command=self.close_window)
+        self.btn_cancel.grid(row=3,
+                             column=1,
+                             pady=5)
 
         # Frame - Contains the path selection widgets
         self.frame_path = tk.Frame(self.master,
@@ -464,22 +504,13 @@ class WindowModelConfig:
                              column=2,
                              padx=5)
 
-        # accept and cancel buttons
-        self.btn_accept = tk.Button(self.master,
-                                    text='Aceptar',
-                                    command=self.save_selection)
-        self.btn_accept.grid(row=3,
-                             column=0,
-                             pady=5)
-
-        self.btn_cancel = tk.Button(self.master,
-                                    text='Cancelar',
-                                    command=self.close_window)
-        self.btn_cancel.grid(row=3,
-                             column=1,
-                             pady=5)
-
         center_window(self.master, self.screen_width, self.screen_height)
+
+    def btn_update_callback(self):
+
+        self.btn_accept['state'] = 'normal'
+
+        self.add_path_selection_to_grid(2)
 
     def add_path_selection_to_grid(self, row):
 
@@ -511,7 +542,6 @@ class WindowModelConfig:
             self.lbl_path.configure(text=filename)
 
     def save_selection(self):
-        """"""
 
         # open PopUp warning if the Path Label is empty
         if self.lbl_path['text'] == '':
@@ -530,6 +560,7 @@ class WindowModelConfig:
             self.app.update_model()
             self.open_window_pop_up('Mensaje', 'Modelo actualizado.')
             today_date = datetime.datetime.today().strftime('%d/%m/%Y')
+            self.app.set_path('Last_Update', today_date)
             self.status_label['text'] = f'Modelo actualizado por última vez el {today_date}.'
             self.successful_load = True
             self.close_window()
@@ -566,20 +597,34 @@ class WindowPopUpMessage:
 
         # --- NIVEL 0 ---
 
-        # Label para desplegar el mensaje
-        self.message = tk.Label(self.master,
-                                text=message,
-                                bg=bg_color,
-                                padx=100,
-                                pady=50,
-                                font=("Calibri Light", 12))
-        self.message.pack()
+        # --- LEVEL 0 ---
+        # Frame with border that contains the message and the button.
+        self.main_frame = tk.Frame(self.master,
+                                   bg=bg_color,
+                                   padx=20,
+                                   pady=20,
+                                   borderwidth=2,
+                                   relief='groove')
+        self.main_frame.pack(padx=20,
+                             pady=20)
 
         # Boton para aceptar y cerrar
         self.btn_accept = tk.Button(self.master,
                                     text='Aceptar',
                                     command=self.close_window)
         self.btn_accept.pack(padx=10, pady=10)
+
+        # --- LEVEL 1 ---
+
+        # Label para desplegar el mensaje
+        self.message = tk.Label(self.main_frame,
+                                text=message,
+                                bg=bg_color,
+                                padx=100,
+                                pady=50,
+                                font=("Calibri Light", 12))
+        self.message.pack(padx=20,
+                          pady=20)
 
         center_window(self.master, self.screen_width_, self.screen_height_)
 
