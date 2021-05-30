@@ -112,7 +112,6 @@ def fill_dates_in_df(df: pd.DataFrame, date: datetime.date):
 
 
 def calc_mae(data, fitted, df_index):
-
     df_fitted = pd.DataFrame(fitted, columns=['Ajuste'], index=df_index)
     error_df = pd.concat([data, df_fitted], axis=1)
     error_df['Error'] = abs(error_df['Ajuste'] - error_df['Demanda'])
@@ -520,6 +519,13 @@ class Application:
         # read the data
         df = self.read_data(process_)
 
+        # Metrics forecast could be two different files, test first
+        if process_ == 'Metrics_Forecast':
+            if df.shape[1] == 4:
+                process_ = 'Metrics_Forecast_Stats'
+            else:
+                process_ = 'Metrics_Forecast_Colab'
+
         # Dictionary for each process
         # The item is another dictionary with the column mapping for each process
         col_mapping = {'Demand': ['Fecha',
@@ -529,20 +535,20 @@ class Application:
                        'Forecast': ['Fecha',
                                     'Codigo',
                                     'Nombre',
-                                    'Pronóstico',
-                                    'Min',
-                                    'Max'],
+                                    'Pronóstico'],
                        'Metrics_Demand': ['Fecha',
                                           'Codigo',
                                           'Nombre',
                                           'Demanda'],
-                       'Metrics_Forecast': ['Fecha',
-                                            'Codigo',
-                                            'Nombre',
-                                            'Grupo',
-                                            'Pronóstico',
-                                            'Min',
-                                            'Max'],
+                       'Metrics_Forecast_Stats': ['Fecha',
+                                                  'Codigo',
+                                                  'Nombre',
+                                                  'Pronóstico'],
+                       'Metrics_Forecast_Colab': ['Fecha',
+                                                  'Codigo',
+                                                  'Nombre',
+                                                  'Grupo',
+                                                  'Pronóstico'],
                        'Demand_Agent': ['Fecha',
                                         'Codigo',
                                         'Nombre',
@@ -576,7 +582,6 @@ class Application:
         df['Fecha'] = df['Fecha'].dt.date
 
         # group demand by date and categorical features (sum)
-        # df = df.groupby(df.columns[:-1].to_list()).sum().reset_index()
         df = df.groupby(list(df.columns[:-1])).sum().reset_index()
 
         # Ordenar por fecha
@@ -722,6 +727,7 @@ class Application:
 
     @staticmethod
     def create_master_data_df(df, columns):
+        """Create a dataframe with unique values for each of the columns passed."""
 
         df_ = pd.DataFrame()
         for col in columns:
@@ -973,9 +979,10 @@ class Application:
         # calculate the rmse percentage
         rmse_perc = rmse_ / df[self.var_names[0]].mean()
 
-        if model_sku == statsmodels.tsa.holtwinters.results.HoltWintersResultsWrapper:
-            aic = model_sku.aic
-            bic = model_sku.bic
+        # Get AIC and BIC
+        if type(model_sku) == pmdarima.arima.arima.ARIMA:
+            aic = model_sku.aic()
+            bic = model_sku.bic()
 
         else:
             aic = model_sku.aic
@@ -1133,8 +1140,11 @@ class Application:
             self.df_total_demand_fcst = df_demand_forecast_agents
 
     def export_data(self, path, file_name, extension, process):
+        """
+        Callback for the Export button from the GUI.
+        Exports the relevant data depending on the process parameter."""
 
-        print('Exportando.')
+        # Define the filename
         file_name = file_name + extension
 
         # If the process is demand or demand agent
@@ -1148,40 +1158,61 @@ class Application:
         else:
             df = self.df_total_input
 
-        # Reset the index to get the date
+        # Reset the index to get the date as a column
         df = df.reset_index()
 
+        # Rename the date column
         try:
             df = df.rename(columns={'index': 'Fecha'})
         except KeyError:
             pass
 
-        # format date
+        # Get the date from the datetime values
         df['Fecha'] = df['Fecha'].dt.date
 
+        # If the process is Forecast, divide each product forecast into the user-defined sales groups.
         if process == 'Forecast':
             df_segmented = pd.DataFrame()
             segment_dict = self.get_parameter('Segmentacion')
+
+            # For each sales group, get a new dataframe and concatenate each to an empty one.
             for key, value in segment_dict.items():
                 df['Grupo'] = key
                 df['Pronóstico'] = df['Pronóstico'] * float(value)
                 df_segmented = pd.concat([df_segmented, df], axis=0)
-
             df = pd.DataFrame(df_segmented)
 
-        df['Pronóstico'] = df['Pronóstico'].round(2)
+        # Round the numerical values
+        # df['Pronóstico'] = df['Pronóstico'].round(2)
 
+        # --- COLUMN MAPPING AND SIZES ---
+
+        # If process is Demand, 6 columns.
         if process in ['Demand', 'Model']:
-            col_order = ['Fecha', 'Codigo', 'Nombre', 'Pronóstico', 'Min', 'Max']
+            col_order = ['Fecha',
+                         'Codigo',
+                         'Nombre',
+                         'Pronóstico',
+                         'Min',
+                         'Max']
             col_sizes = [12, 12, 40, 12, 12, 12]
 
+        # If process is Demand Agent, 11 columns.
         elif process == 'Demand_Agent':
+
+            # Add the master data to the forecast DF
             df = df.merge(self.df_master_data[['Codigo', 'Unidad_Medida']], on='Codigo', how='left')
+
+            # Add extra columns
             df['Fecha creacion'] = datetime.date.today().strftime('%d-%m-%Y')
             df['Codigo cliente'] = 'ESTIMADO'
             df['Nombre cliente'] = 'Estimado por agente'
+
+            # Rename columns
             df = df.rename(columns={'Codigo': 'Codigo producto',
                                     'Nombre': 'Nombre producto'})
+
+            # Column order
             col_order = ['Fecha creacion',
                          'Fecha',
                          'Agente',
@@ -1193,14 +1224,27 @@ class Application:
                          'Unidad_Medida',
                          'Min',
                          'Max']
+
+            # Column sizes
             col_sizes = [12, 12, 12, 12, 40, 12, 40, 12, 12, 12, 12]
 
+        # If process is Forecast, 5 columns.
         elif process == 'Forecast':
-            col_order = ['Fecha', 'Codigo', 'Nombre', 'Grupo', 'Pronóstico']
+            col_order = ['Fecha',
+                         'Codigo',
+                         'Nombre',
+                         'Grupo',
+                         'Pronóstico']
             col_sizes = [12, 12, 40, 12, 12]
 
+        # If process is Metrics, 6 columns.
         else:
-            col_order = ['Fecha', 'Codigo', 'Nombre', 'Demanda', 'Pronóstico', 'Error']
+            col_order = ['Fecha',
+                         'Codigo',
+                         'Nombre',
+                         'Demanda',
+                         'Pronóstico',
+                         'Error']
             col_sizes = [12, 12, 40, 12, 12, 12]
 
         # Change column order
