@@ -459,8 +459,8 @@ class Main:
 
     def pack_to_main_frame(self):
 
-        self.paned_win_tbl_plot.add(self.top_frame)
-        self.paned_win_tbl_plot.add(self.bottom_frame)
+        self.paned_win_tbl_plot.add(self.top_frame, stretch='always')
+        self.paned_win_tbl_plot.add(self.bottom_frame, stretch='always')
         self.paned_win_tbl_plot.pack(fill=BOTH, expand=True)
 
         try:
@@ -773,7 +773,7 @@ class Main:
         brand_green = '#005c2c'  # ticheese green
         yellow = '#ffff00'
         orange = '#e5a700'
-        title_font_size = 20
+        title_font_size = 16
         title_font_weight = 'medium'
 
         # If the plot type is Demand or Forecast, create a single axis plot.
@@ -1077,7 +1077,7 @@ class Main:
         # Configure self.treeview
         self.treev['columns'] = ('1', '2')
         self.treev['show'] = 'headings'
-        self.treev.column("1", width=250, anchor='c')
+        self.treev.column("1", width=250, anchor='sw')
         self.treev.column("2", width=90, anchor='se')
 
         self.treev.heading("1", text="Métrica")
@@ -1217,6 +1217,7 @@ class WindowSelectWorkPath:
         self.master = master
         self.master.title("Módulo de Demanda - COPROLAC")
         self.master.configure(background=bg_color)
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.screen_width = screen_width_
         self.screen_height = screen_height_
         self.width = self.screen_width / 2
@@ -1624,7 +1625,8 @@ class WindowSegmentOptions:
 
     def __init__(self, master, app: Application, screen_width_, screen_height_):
         self.master = master
-        self.master.title("Carga de pronóstico")
+        self.master.title("Segmentación")
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.master.configure(background=bg_color)
         self.screen_width = screen_width_
         self.screen_height = screen_height_
@@ -1784,7 +1786,7 @@ class WindowSegmentOptions:
         """
 
         sv_values = [float(var.get()) if var.get() != "" else 0 for var in self.string_vars]
-        self.lbl_total_val['text'] = round(sum(sv_values), 2)
+        self.lbl_total_val['text'] = f'{round(sum(sv_values), 2)} %'
 
         return round(sum(sv_values), 2)
 
@@ -1862,6 +1864,7 @@ class WindowPopUpMessage:
     def __init__(self, master, title: str, message: str, screen_width_, screen_height_):
         self.master = master
         self.master.title(title)
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.master.configure(background=bg_color)
         self.screen_width_ = screen_width_
         self.screen_height_ = screen_height_
@@ -1905,6 +1908,7 @@ class WindowPopUpMessageWithCancel:
     def __init__(self, master, title: str, message: str, screen_width_, screen_height_):
         self.master = master
         self.master.title(title)
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.master.configure(background=bg_color)
         self.screen_width_ = screen_width_
         self.screen_height_ = screen_height_
@@ -1968,6 +1972,7 @@ class WindowPopUpMessageWithCancel:
 class ConfigModel:
     def __init__(self, master, app: Application, screen_width, screen_height, model: str):
         self.master = master
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.app = app
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -2078,6 +2083,7 @@ class WindowTraining:
     def __init__(self, master, app: Application, queue_, thread_, width, height):
         self.master = master
         self.app = app
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.width = width
         self.height = height
         self.queue_ = queue_
@@ -2133,6 +2139,7 @@ class WindowExportFile:
     def __init__(self, master, app: Application, screen_width, screen_height, process):
         self.master = master
         self.app = app
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.width = screen_width / 2
