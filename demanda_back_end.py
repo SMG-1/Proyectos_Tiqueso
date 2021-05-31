@@ -720,6 +720,16 @@ class Application:
         df.set_index(['Fecha'], inplace=True)
         df.index = pd.DatetimeIndex(df.index)
 
+        # Calculate bias and MAE for each product and add them to dataframe for exporting.
+        df_export = copy.deepcopy(df)
+        df_export['Abs_Error'] = df_export['Error'].abs()
+        df_export_bias = df_export.groupby(['Codigo', 'Nombre'])['Error'].mean().reset_index()
+        df_export_mae = df_export.groupby(['Codigo', 'Nombre'])['Abs_Error'].mean().reset_index()
+        df_export = df_export_bias.merge(df_export_mae, on=['Codigo', 'Nombre'], how='left')
+        df_export.columns = ['Codigo', 'Nombre', 'Sesgo', 'MAE']
+
+        self.df_error_export = df_export
+
         # Save data frame to class attribute.
         self.raw_data = df
 
@@ -1289,6 +1299,8 @@ class Application:
                 metrics_sheet['A5'] = 'Sesgo (%)'
                 metrics_sheet['B5'] = bias_perc
                 metrics_sheet['B5'].number_format = '0.00%'
+
+                df_to_excel(wb, self.df_error_export, metrics_sheet, 10, as_table=True, table_name='Metrics')
 
                 change_col_sizes(metrics_sheet, ['Metricas', 'Valores'], [25, 10])
 
