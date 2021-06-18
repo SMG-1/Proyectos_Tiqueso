@@ -1255,6 +1255,17 @@ class Application:
 
         return df_disaggregated
 
+    def convert_to_percentage(self, df):
+
+        df_grouped = df.groupby(['Fecha', 'Agente'])['Pronóstico'].sum().reset_index()
+        df_grouped.columns = ['Fecha', 'Agente', 'Total']
+        df_proportions = df.merge(df_grouped, on=['Fecha', 'Agente'], how='left')
+        df_proportions['Pronóstico %'] = df_proportions['Pronóstico'] / df_proportions['Total']
+
+        df_proportions.drop(columns=['Total', 'Pronóstico'], inplace=True)
+
+        return df_proportions
+
     def export_data(self, path, file_name, extension, process, **kwargs):
         """
         Callback for the Export button from the GUI.
@@ -1306,6 +1317,8 @@ class Application:
         # If process is Demand Agent, 11 columns.
         elif process == 'Demand_Agent':
 
+            df = self.convert_to_percentage(df)
+
             # Add the master data to the forecast DF
             df = df.merge(self.df_master_data[['Codigo', 'Unidad_Medida']], on='Codigo', how='left')
 
@@ -1326,7 +1339,7 @@ class Application:
                          'Nombre producto',
                          'Codigo cliente',
                          'Nombre cliente',
-                         'Pronóstico',
+                         'Pronóstico %',
                          'Unidad_Medida',
                          'Min',
                          'Max']
