@@ -121,13 +121,12 @@ class Main:
         ttk_style = ttk.Style()
         ttk_style.configure('TFrame', background='white')
         ttk_style.configure('FrameGreen.TFrame', background='green')
-        # ttk_style.configure('TNotebook', background='green')
 
         # screen width and height, and toplevel width and height
         self.screen_width = GetSystemMetrics(0)
         self.screen_height = GetSystemMetrics(1)
         self.width = self.screen_width
-        self.height = self.screen_height  # - 100
+        self.height = self.screen_height
 
         # top and bottom frame heights
         self.top_frame_height = int(self.height / 4)
@@ -182,6 +181,7 @@ class Main:
         # sub menu declarations
         self.sub_menu_file = Menu(self.main_menu, tearoff=False)
         self.sub_menu_config = Menu(self.main_menu, tearoff=False)
+        self.sub_menu_data = Menu(self.main_menu, tearoff=False)
         self.sub_menu_model = Menu(self.main_menu, tearoff=False)
 
         # commands for the file sub menu
@@ -203,6 +203,10 @@ class Main:
                                              state='disabled')
 
         # commands for the model sub menu
+        self.sub_menu_data.add_command(label='Convertir a familias',
+                                       command=self.sub_menu_convert_callback)  # todo
+
+        # commands for the model sub menu
         self.sub_menu_model.add_command(label='Optimizar modelo',
                                         command=self.run_optimizer)
 
@@ -211,6 +215,8 @@ class Main:
                                    menu=self.sub_menu_file)
         self.main_menu.add_cascade(label='Configuración',
                                    menu=self.sub_menu_config)
+        self.main_menu.add_cascade(label='Datos',
+                                   menu=self.sub_menu_data)
         self.main_menu.add_cascade(label='Modelo',
                                    menu=self.sub_menu_model)
 
@@ -348,20 +354,8 @@ class Main:
         self.frame_filters.pack(fill=BOTH,
                                 expand=True)
 
-        # self.tree_view.bind("<Double-1>", self.refresh_views)
-
-        # declare columns for the Tree View
-        # self.tree_view['columns'] = '1'
-        #  self.tree_view.column('1', anchor='w')
-
-        # declare headings for the Tree View
-        # self.tree_view['show'] = 'headings'
-        # self.tree_view.heading('1', text='Producto', anchor='w')
-
         # Main Frame declaration, on the right of the tree view, inside the Paned Window
         self.main_frame = Frame(self.paned_win_main,
-                                # width=self.width,
-                                # height=self.height,
                                 bg=bg_color)
 
         # Paned Window that contains the tree view and a master frame
@@ -372,9 +366,7 @@ class Main:
 
         # Add the tree view and te main frame to the Paned Window, and pack it to fill the screen
         self.paned_win_main.pack(fill=BOTH, expand=True)
-        # self.paned_win_main.add(self.tree_view)
         self.paned_win_main.add(self.frame_filters)
-        # self.paned_win_main.add(self.main_frame)
         self.paned_win_main.add(self.main_frame)
 
         # --- Level 1 --- Top and Bottom Frames
@@ -468,7 +460,7 @@ class Main:
         except AttributeError:
             pass
 
-    def update_gui(self, process: str):
+    def update_gui(self, process: str, apply_bom=False):
         """
         Function is called on init or after loading new data.
 
@@ -508,10 +500,10 @@ class Main:
         self.btn_save['state'] = btn_save_state
         self.btn_run['state'] = btn_run_state
 
-        try:
+        '''try:
             # the path to the data has been validated, so the data can be separated into several datasets
             # process must be specified to read the correct filepath
-            self.back_end.create_input_df(process)
+            self.back_end.create_input_df(process, apply_bom)
 
             # Pack Top and Bottom Frames to the Main Frame
             self.pack_to_main_frame()
@@ -525,7 +517,20 @@ class Main:
         # if the segmented data sets haven't been created, clear the GUI
         except (KeyError, ValueError, FileNotFoundError, PermissionError) as e:
             self.open_window_pop_up('Error', e)
-            self.clear_gui()
+            self.clear_gui()'''
+
+        # the path to the data has been validated, so the data can be separated into several datasets
+        # process must be specified to read the correct filepath
+        self.back_end.create_input_df(process, apply_bom)
+
+        # Pack Top and Bottom Frames to the Main Frame
+        self.pack_to_main_frame()
+
+        # self.populate_tree(item_list)
+        self.add_filters(process)
+
+        # call function to update the plot and the table on the GUI
+        self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
 
     def add_filters(self, process: str):
         """
@@ -1048,6 +1053,7 @@ class Main:
             self.show_plot_and_table(process, filters, event)
 
     def update_metrics(self, process: str, filters: list):
+
         # change state of the  tab of the notebook
         self.notebook_plotting.tab(self.tab_metrics, state='normal')
 
@@ -1070,7 +1076,7 @@ class Main:
         for widget in self.metrics_frame.winfo_children():
             widget.pack_forget()
 
-        # Declare self.treeview
+        # Declare tree view
         self.treev = ttk.Treeview(self.metrics_frame, selectmode='browse')
         self.treev.pack(side='top')
 
@@ -1094,6 +1100,11 @@ class Main:
             else:
                 metric_name, metric_desc = self.back_end.dict_metric_desc[metric]
                 value = round(float(df_metrics[[metric]].values), 2)
+
+                if metric.endswith('PERC'):
+                    value = str(value) + ' %'
+                else:
+                    value = str(value) + ' kg'
 
                 self.treev.insert('', 'end', text=metric,
                                   values=(metric_name, value))
@@ -1204,6 +1215,123 @@ class Main:
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
+    def sub_menu_convert_callback(self):
+
+        # Declare a new Toplevel
+        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
+        self.new_win = Toplevel(self.master)
+        win_obj = WindowSelectPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        # If the operation was not canceled, get the path.
+        if not win_obj.canceled:
+            self.back_end.apply_bom(self.back_end.raw_data, self.active_process)
+            self.update_gui(self.active_process, apply_bom=True)
+
+
+class WindowSelectPath:
+
+    def __init__(self, master, app: Application, screen_width_, screen_height_):
+        self.master = master
+        self.master.title("Módulo de Demanda - COPROLAC")
+        self.master.configure(background=bg_color)
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
+        self.screen_width = screen_width_
+        self.screen_height = screen_height_
+        self.width = self.screen_width / 2
+        self.height = self.screen_height / 5
+        self.app = app
+
+        self.selected_path = None
+
+        self.canceled = None
+
+        # Container Frame for the paths
+        self.paths_frame = LabelFrame(self.master,
+                                      text='Escoja un directorio:',
+                                      bg=bg_color,
+                                      width=screen_width_ / 5,
+                                      padx=10,
+                                      pady=10)
+        self.paths_frame.grid(padx=10,
+                              pady=10,
+                              row=0,
+                              column=0,
+                              columnspan=2)
+
+        # accept and cancel buttons
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=self.save_path_to_back_end)
+        self.btn_accept.grid(pady=10, row=2, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=lambda: self.close_window(canceled=True))
+        self.btn_cancel.grid(pady=10, row=2, column=1)
+
+        # Name Label, first column
+        self.lbl_name_path = Label(self.paths_frame,
+                                   text='Recetas',
+                                   bg=bg_color)
+        self.lbl_name_path.grid(pady=10,
+                                row=0,
+                                column=0,
+                                padx=5)
+
+        # Path Label, second column
+        self.lbl_path = Label(self.paths_frame,
+                              text=self.app.get_path('BOM'),
+                              bg=bg_color,
+                              pady=10,
+                              borderwidth=2,
+                              width=150,
+                              relief="groove",
+                              anchor='w')
+        self.lbl_path.grid(pady=10,
+                           row=0,
+                           column=1,
+                           padx=5)
+
+        # Browse Button, third column, to open the browse files window
+        self.btn_browse = Button(self.paths_frame,
+                                 text='...',
+                                 command=self.get_user_selected_path)
+        self.btn_browse.grid(pady=10,
+                             row=0,
+                             column=2,
+                             padx=5)
+
+    def close_window(self, canceled: bool):
+        self.canceled = canceled
+        self.master.destroy()
+
+    def get_user_selected_path(self):
+        self.selected_path = browse_files_master(self.app.get_path('Temp'))
+        self.lbl_path['text'] = self.selected_path[1]
+
+    def save_path_to_back_end(self):
+
+        # Get selected path from the label text.
+        selected_path = self.lbl_path['text']
+
+        # Validate path before saving to back end.
+        if validate_path(selected_path, is_file=True):
+
+            # Set selected path to back end.
+            self.app.set_path('BOM', selected_path)
+            self.close_window(canceled=False)
+
+        # If path is invalid, open pop up warning.
+        else:
+            WindowPopUpMessage(self.master,
+                               'Error',
+                               'Debe seleccionar un archivo válido.\n'
+                               'El archivo puede ser en formato Excel o CSV.',
+                               self.screen_width,
+                               self.screen_height)
+
 
 class WindowSelectWorkPath:
 
@@ -1275,7 +1403,7 @@ class WindowSelectWorkPath:
         # Routine Frame
         # Selection Combobox, second column,  to choose which type of file to open, demand or forecast
         self.modes_user_options = ['Crear pronóstico de demanda',
-                                   'Segmentar pronóstico de demanda',
+                                   'Cargar pronóstico de demanda',
                                    'Calcular métricas',
                                    'Crear pronóstico por agente']
         self.back_end_modes = self.app.modes
@@ -1549,7 +1677,6 @@ class WindowSelectWorkPath:
 
         # create separate datasets for each of the unique products
         try:
-            # self.app.create_input_df(self.process) # todo: should not be run here
             # self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
             self.app.set_parameter('Mode', self.process)
@@ -2151,6 +2278,8 @@ class WindowExportFile:
         # configure columns
         self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
 
+        column_span = 1
+
         # Master frame
         self.frame_master = Frame(self.master, bg=bg_color, borderwidth=2, width=75, padx=10, pady=10)
         self.frame_master.pack(fill=BOTH, expand=True)
@@ -2162,8 +2291,10 @@ class WindowExportFile:
                                bg=bg_color,
                                width=100,
                                command=self.browse_files)
-        self.btn_path.grid(row=0, column=0, pady=5, sticky='WE')
+        self.btn_path.grid(row=0, column=0, pady=5, sticky='WE',
+                           columnspan=column_span)
 
+        # Entry - Choose filename
         self.entry_output_file = Entry(self.frame_master)
         if process in ['Demand', 'Model']:
             file_name = self.app.config_shelf.send_parameter('File_name')
@@ -2175,21 +2306,29 @@ class WindowExportFile:
             file_name = self.app.config_shelf.send_parameter('File_name_metrics')
         today_date = datetime.datetime.today().strftime('%d-%m-%Y')
         self.entry_output_file.insert(END, file_name + f' {today_date}')
-        self.entry_output_file.grid(row=1, column=0, pady=5, sticky='WE')
+        self.entry_output_file.grid(row=1, column=0, pady=5, sticky='WE',
+                                    columnspan=column_span)
 
         # Combobox to choose extension
         self.exts = {'Libro de Excel (*.xlsx)': '.xlsx',
                      'CSV UTF-8 (*.csv)': '.csv'}
         self.combobox_extensions = ttk.Combobox(self.frame_master, value=list(self.exts.keys()))
         self.combobox_extensions.current(0)
-        self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='WE')
+        self.combobox_extensions.grid(row=2, column=0, pady=5, sticky='WE',
+                                      columnspan=column_span)
 
         # Button to accept
         self_btn_accept = Button(self.frame_master,
                                  text='Guardar',
                                  padx=10,
                                  command=self.call_backend_export)
-        self_btn_accept.grid(row=2, column=1, padx=10)
+        self_btn_accept.grid(row=2, column=column_span + 1, padx=10)
+
+        if self.process == 'Forecast':
+            self.chk_var = IntVar()
+            self.chk_btn = Checkbutton(self.frame_master, bg=bg_color, text='Aplicar segmentación?',
+                                       variable=self.chk_var)
+            self.chk_btn.grid(row=3, column=0, sticky='W')
 
         # center window on screen
         center_window(self.master, self.screen_width, self.screen_height)
@@ -2198,7 +2337,21 @@ class WindowExportFile:
 
         ext_ = self.exts[self.combobox_extensions.get()]
         try:
-            self.app.export_data(self.btn_path['text'], self.entry_output_file.get(), ext_, self.process)
+
+            if self.process == 'Forecast':
+
+                self.app.export_data(self.btn_path['text'],
+                                     self.entry_output_file.get(),
+                                     ext_,
+                                     self.process,
+                                     disaggregate=self.chk_var.get())
+
+            else:
+                self.app.export_data(self.btn_path['text'],
+                                     self.entry_output_file.get(),
+                                     ext_,
+                                     self.process)
+
             new_win = Toplevel(self.master)
             WindowPopUpMessage(new_win,
                                'Mensaje',
@@ -2220,7 +2373,7 @@ class WindowExportFile:
 
         except PermissionError:
             new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win, 'Error', 'Hay un archivo con el mismo nombre abierto.\n'
+            WindowPopUpMessage(new_win, 'Error', 'El archivo está abierto.\n'
                                                  'Debe cerrarlo antes de proceder.',
                                self.width, self.height)
             new_win.grab_set()
@@ -2258,7 +2411,6 @@ class ThreadedClient(threading.Thread):
 
     def run(self):
         self.application.fit_forecast_evaluate_pipeline(self.process, self.queue)
-
 
 
 if __name__ == '__main__':
