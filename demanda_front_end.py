@@ -3,6 +3,7 @@ import datetime
 import os
 import queue
 import threading
+import tkinter
 from tkinter import *
 from tkinter import filedialog
 from tkinter import ttk
@@ -21,6 +22,16 @@ from demanda_back_end import ConfigShelf
 plt.style.use('ggplot')
 bg_color = 'white'
 pd.set_option('display.float_format', lambda x: '%,g' % x)
+brand_green = '#005c2c'  # ticheese green\
+
+
+def get_longest_str_length_from_list(list_: list):
+    max_length = 0
+    for item in list_:
+        if len(item) > max_length:
+            max_length = len(item)
+
+    return max_length
 
 
 def _from_rgb(rgb):
@@ -500,10 +511,23 @@ class Main:
         self.btn_save['state'] = btn_save_state
         self.btn_run['state'] = btn_run_state
 
-        '''try:
+        try:
             # the path to the data has been validated, so the data can be separated into several datasets
             # process must be specified to read the correct filepath
-            self.back_end.create_input_df(process, apply_bom)
+
+            self.master.withdraw()
+
+            queue_ = queue.Queue()
+            initializing_thread = ThreadedClient_exp(queue_, self.back_end.create_input_df, [process, apply_bom])
+            initializing_thread.start()
+
+            self.new_win = Toplevel(self.master)
+            self.new_win.overrideredirect(1)
+            self.win_obj = WindowLoading(self.new_win, initializing_thread, self.screen_width, self.screen_height)
+            self.new_win.grab_set()
+            self.master.wait_window(self.new_win)
+
+            self.master.deiconify()
 
             # Pack Top and Bottom Frames to the Main Frame
             self.pack_to_main_frame()
@@ -515,22 +539,9 @@ class Main:
             self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
 
         # if the segmented data sets haven't been created, clear the GUI
-        except (KeyError, ValueError, FileNotFoundError, PermissionError) as e:
+        except (KeyError, ValueError, FileNotFoundError, PermissionError, tkinter.TclError) as e:
             self.open_window_pop_up('Error', e)
-            self.clear_gui()'''
-
-        # the path to the data has been validated, so the data can be separated into several datasets
-        # process must be specified to read the correct filepath
-        self.back_end.create_input_df(process, apply_bom)
-
-        # Pack Top and Bottom Frames to the Main Frame
-        self.pack_to_main_frame()
-
-        # self.populate_tree(item_list)
-        self.add_filters(process)
-
-        # call function to update the plot and the table on the GUI
-        self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
+            self.clear_gui()
 
     def add_filters(self, process: str):
         """
@@ -544,7 +555,7 @@ class Main:
 
         self.cbx_agent = ttk.Combobox(self.frame_filters,
                                       value=self.back_end.available_agents,
-                                      width=40)
+                                      width=get_longest_str_length_from_list(self.back_end.available_agents) + 5)
 
         self.lbl_name_prod = Label(self.frame_filters,
                                    bg=bg_color,
@@ -559,7 +570,7 @@ class Main:
 
         self.cbx_prod = ttk.Combobox(self.frame_filters,
                                      value=prod_list,
-                                     width=40)
+                                     width=get_longest_str_length_from_list(prod_list) + 5)
 
         # If process is Demand_Agent add an extra Agent filter on top
         if process == 'Demand_Agent':
@@ -1220,7 +1231,12 @@ class Main:
         # Declare a new Toplevel
         # grab_set and wait_window to wait for the main screen to freeze until this window is closed
         self.new_win = Toplevel(self.master)
-        win_obj = WindowSelectPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
+        win_obj = WindowSelectPath(self.new_win,
+                                   self.back_end,
+                                   self.screen_width,
+                                   self.screen_height,
+                                   'Recetas',
+                                   'BOM')
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -1232,7 +1248,7 @@ class Main:
 
 class WindowSelectPath:
 
-    def __init__(self, master, app: Application, screen_width_, screen_height_):
+    def __init__(self, master, app: Application, screen_width_, screen_height_, path_name, path_name_back_end):
         self.master = master
         self.master.title("Módulo de Demanda - COPROLAC")
         self.master.configure(background=bg_color)
@@ -1242,6 +1258,9 @@ class WindowSelectPath:
         self.width = self.screen_width / 2
         self.height = self.screen_height / 5
         self.app = app
+
+        self.path_name = path_name
+        self.path_name_back_end = path_name_back_end
 
         self.selected_path = None
 
@@ -1273,7 +1292,7 @@ class WindowSelectPath:
 
         # Name Label, first column
         self.lbl_name_path = Label(self.paths_frame,
-                                   text='Recetas',
+                                   text=self.path_name,
                                    bg=bg_color)
         self.lbl_name_path.grid(pady=10,
                                 row=0,
@@ -1282,7 +1301,7 @@ class WindowSelectPath:
 
         # Path Label, second column
         self.lbl_path = Label(self.paths_frame,
-                              text=self.app.get_path('BOM'),
+                              text=self.app.get_path(self.path_name_back_end),
                               bg=bg_color,
                               pady=10,
                               borderwidth=2,
@@ -1320,7 +1339,7 @@ class WindowSelectPath:
         if validate_path(selected_path, is_file=True):
 
             # Set selected path to back end.
-            self.app.set_path('BOM', selected_path)
+            self.app.set_path(self.path_name_back_end, selected_path)
             self.close_window(canceled=False)
 
         # If path is invalid, open pop up warning.
@@ -1748,7 +1767,7 @@ class WindowSelectWorkPath:
         self.master.destroy()
 
 
-class WindowSegmentOptions:
+class WindowSegmentManual:
 
     def __init__(self, master, app: Application, screen_width_, screen_height_):
         self.master = master
@@ -1761,6 +1780,7 @@ class WindowSegmentOptions:
         self.height = self.screen_height / 5
         self.app = app
         self.new_win = None
+        self.canceled = False
 
         # --- NIVEL 0 ---
 
@@ -1808,7 +1828,7 @@ class WindowSegmentOptions:
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=self.close_window)
+                                 command=lambda: self.close_window(True))
         self.btn_cancel.grid(pady=10, row=2, column=2)
 
         # --- NIVEL 1 ---
@@ -1973,7 +1993,11 @@ class WindowSegmentOptions:
 
             self.close_window()
 
-    def close_window(self):
+    def close_window(self, canceled=False):
+
+        if canceled:
+            self.canceled = True
+
         self.master.destroy()
 
     def open_window_pop_up(self, title, msg):
@@ -2263,7 +2287,7 @@ class WindowTraining:
 
 
 class WindowExportFile:
-    def __init__(self, master, app: Application, screen_width, screen_height, process):
+    def __init__(self, master, app: Application, screen_width, screen_height, process, **kwargs):
         self.master = master
         self.app = app
         self.master.iconbitmap(resource_path(r'res/icon.ico'))
@@ -2274,6 +2298,9 @@ class WindowExportFile:
         self.thread_ = None
         self.process = process
         self.new_win = None
+
+        if kwargs['df'].keys().__contains__('df'):
+            self.df = kwargs['df']
 
         # configure columns
         self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
@@ -2324,11 +2351,27 @@ class WindowExportFile:
                                  command=self.call_backend_export)
         self_btn_accept.grid(row=2, column=column_span + 1, padx=10)
 
+        chk_args = {'row': 3,
+                    'column': 0,
+                    'sticky': 'W'}
+
+        self.chk_var = IntVar()
+        self.chk_btn = Checkbutton(self.frame_master,
+                                   bg=bg_color,
+                                   text='Aplicar segmentación?',
+                                   variable=self.chk_var)
+
+        self.var_weight_fcst = IntVar()
+        self.chkbtn_weight_fcst = Checkbutton(self.frame_master,
+                                              bg=bg_color,
+                                              text='Ponderar pronóstico?',
+                                              variable=self.var_weight_fcst)
+
         if self.process == 'Forecast':
-            self.chk_var = IntVar()
-            self.chk_btn = Checkbutton(self.frame_master, bg=bg_color, text='Aplicar segmentación?',
-                                       variable=self.chk_var)
-            self.chk_btn.grid(row=3, column=0, sticky='W')
+            self.chk_btn.grid(chk_args)
+
+        if self.process == 'Demand_Agent':
+            self.chkbtn_weight_fcst.grid(chk_args)
 
         # center window on screen
         center_window(self.master, self.screen_width, self.screen_height)
@@ -2336,48 +2379,40 @@ class WindowExportFile:
     def call_backend_export(self):
 
         ext_ = self.exts[self.combobox_extensions.get()]
+
+        list_args_export = [self.btn_path['text'],
+                            self.entry_output_file.get(),
+                            ext_,
+                            self.process]
+
+        dict_kwargs_export = {'disaggregate': self.chk_var.get(),
+                              'weighted_forecast': self.var_weight_fcst.get(),
+                              'df': self.df}
+
         try:
+            self.app.export_data(*list_args_export, **dict_kwargs_export)
 
-            if self.process == 'Forecast':
-
-                self.app.export_data(self.btn_path['text'],
-                                     self.entry_output_file.get(),
-                                     ext_,
-                                     self.process,
-                                     disaggregate=self.chk_var.get())
-
-            else:
-                self.app.export_data(self.btn_path['text'],
-                                     self.entry_output_file.get(),
-                                     ext_,
-                                     self.process)
-
-            new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win,
-                               'Mensaje',
-                               'Archivo exportado.',
-                               self.screen_width,
-                               self.screen_height)
-            new_win.grab_set()
-            self.master.wait_window(new_win)
+            win_title = 'Mensaje'
+            win_msg = 'Archivo exportado.'
 
         except ValueError:
-            new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win,
-                               'Advertencia',
-                               'Debe ejecutar el pronóstico antes de exportar la información.',
-                               self.screen_width,
-                               self.screen_height)
-            new_win.grab_set()
-            self.master.wait_window(new_win)
+
+            win_title = 'Advertencia'
+            win_msg = 'Archivo exportado.'
 
         except PermissionError:
-            new_win = Toplevel(self.master)
-            WindowPopUpMessage(new_win, 'Error', 'El archivo está abierto.\n'
-                                                 'Debe cerrarlo antes de proceder.',
-                               self.width, self.height)
-            new_win.grab_set()
-            self.master.wait_window(new_win)
+
+            win_title = 'Error'
+            win_msg = 'El archivo está abierto.\nDebe cerrarlo antes de proceder.'
+
+        new_win = Toplevel(self.master)
+        WindowPopUpMessage(new_win,
+                           win_title,
+                           win_msg,
+                           self.screen_width,
+                           self.screen_height)
+        new_win.grab_set()
+        self.master.wait_window(new_win)
 
     def open_window_popup(self):
         """Open TopLevel to select path where the input files are located."""
@@ -2401,6 +2436,140 @@ class WindowExportFile:
             self.btn_path.configure(text=filename)
 
 
+class WindowSegmentOptions:
+    def __init__(self, master, app:Application, screen_width, screen_height):
+        self.master = master
+        self.app = app
+        self.master.title("Segmentación de pronóstico")
+        self.master.configure(background=bg_color)
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.width = self.screen_width / 2
+        self.height = self.screen_height / 5
+
+        # Container Frame for the paths
+        self.lbl_frame_segments = LabelFrame(self.master,
+                                             text='Escoja un método de segmentación:',
+                                             bg=bg_color,
+                                             width=screen_width / 5,
+                                             padx=10,
+                                             pady=10)
+        self.lbl_frame_segments.grid(padx=10,
+                                     pady=10,
+                                     row=0,
+                                     column=0,
+                                     columnspan=2)
+
+        # accept and cancel buttons
+        self.btn_accept = Button(self.master,
+                                 text='Aceptar',
+                                 command=self.accept_callback)
+        self.btn_accept.grid(pady=10, row=2, column=0)
+
+        self.btn_cancel = Button(self.master,
+                                 text='Cancelar',
+                                 command=self.close_window)
+        self.btn_cancel.grid(pady=10, row=2, column=1)
+
+        # Combobox to choose segmentation method
+        cbx_options = ['Usar pronóstico ponderado',
+                       'Método manual']
+        self.cbx_segment_options = ttk.Combobox(self.lbl_frame_segments,
+                                                value=cbx_options)
+        self.cbx_segment_options.current(0)
+        self.cbx_segment_options.grid(row=2,
+                                      column=0,
+                                      pady=5,
+                                      sticky='WE')
+
+    def close_window(self):
+        self.master.destroy()
+
+    def accept_callback(self):
+
+        user_selection = self.cbx_segment_options.get()
+
+        # Declare a new Toplevel
+        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
+        self.new_win = Toplevel(self.master)
+
+        if user_selection == 'Usar pronóstico ponderado':
+            win_obj = WindowSelectPath(self.new_win,
+                                       self.app,
+                                       self.screen_width,
+                                       self.screen_height,
+                                       'Pronóstico ponderado',
+                                       'Weighted_Forecast')
+        else:
+            win_obj = WindowSegmentManual(self.new_win,
+                                          self.app,
+                                          self.screen_width,
+                                          self.screen_height)
+
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        if win_obj.canceled:
+            self.close_window()
+
+        if user_selection == 'Usar pronóstico ponderado':
+            disaggregation_method = 'Weighted_Forecast'
+        else:
+            disaggregation_method = 'Disaggregate_Dict'
+
+        df_disaggregated = self.app.disaggregate_forecast_workflow(disaggregation_method)
+
+        new_win_export = Toplevel(self.master)
+        win_obj = WindowExportFile(new_win_export, self.app, self.screen_width, self.screen_height, 'Forecast',
+                                   df=df_disaggregated)
+        new_win_export.grab_set()
+        new_win_export.wait_window()
+
+class WindowLoading:
+    def __init__(self, master, thread, screen_width, screen_height):
+        self.master = master
+        self.thread = thread
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.width = screen_width / 2
+        self.height = screen_height / 5
+        self.master.configure(background=brand_green)
+
+        main_frame = Frame(self.master, bg=brand_green, padx=100, pady=100)
+        main_frame.pack()
+
+        loading_label = Label(main_frame,
+                              text='Cargando información',
+                              bg=brand_green,
+                              font=("Calibri Light", 28),
+                              fg='white')
+        loading_label.pack()
+
+        loading_label_2 = Label(main_frame,
+                                text='Por favor, espere.',
+                                bg=brand_green,
+                                font=("Calibri Light", 18),
+                                fg='white')
+        loading_label_2.pack()
+
+        center_window(self.master, self.screen_width, self.screen_height)
+
+        self.periodic_call()
+
+    def close_window(self):
+        self.master.destroy()
+
+    def periodic_call(self):
+
+        if self.thread.is_alive():
+            self.master.after(100, self.periodic_call)
+
+        else:
+            self.close_window()
+
+
 class ThreadedClient(threading.Thread):
     def __init__(self, queue_, application: Application, process):
         threading.Thread.__init__(self)
@@ -2411,6 +2580,19 @@ class ThreadedClient(threading.Thread):
 
     def run(self):
         self.application.fit_forecast_evaluate_pipeline(self.process, self.queue)
+
+
+class ThreadedClient_exp(threading.Thread):
+
+    def __init__(self, queue_, func, *args, **kwargs):
+        threading.Thread.__init__(self)
+        self.queue_ = queue_
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+
+    def run(self):
+        self.func(*self.args[0], **self.kwargs)
 
 
 if __name__ == '__main__':
