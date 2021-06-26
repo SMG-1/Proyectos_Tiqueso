@@ -101,10 +101,6 @@ def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, a
 
 
 def fill_dates_in_df(df: pd.DataFrame, date: datetime.date):
-
-    if df['Nombre'].unique()[0] == 'QUESO MOZZARELLA RALLADO 500 G':
-        print('shit')
-
     df = df.reset_index()
     if 'Unidad_Medida' in list(df.columns):
         df = df.groupby(['Fecha', 'Codigo', 'Nombre', 'Unidad_Medida', 'Agente']).sum().reset_index()
@@ -175,6 +171,7 @@ class FilePathShelf:
         self._shelve_keys = ['Working',
                              'Demand',
                              'Forecast',
+                             'Weighted_Forecast',
                              'BOM',
                              'Metrics_Demand',
                              'Metrics_Forecast',
@@ -534,6 +531,27 @@ class Application:
         # raise value error if the key is empty
         if path == '':
             err = f"El directorio hacia el archivo de {mapping[process_]} no esta definido."
+            raise KeyError(err)
+
+        # if file ends with CSV, read as CSV
+        if path.endswith('.csv'):
+            df = pd.read_csv(path, sep=",", decimal=",", header=0)
+            return df
+
+        # if file ends with xlsx, read as Excel
+        elif path.endswith('.xlsx'):
+            df = pd.read_excel(path)
+            return df
+
+    def read_data_from_path(self, path_name):
+        """Returns pandas dataframe with time series data."""
+
+        # Get Demand path from parameters shelf
+        path = self.file_paths_shelf.send_path(path_name)
+
+        # raise value error if the key is empty
+        if path_name == '':
+            err = f"El directorio  {path_name} no esta definido."
             raise KeyError(err)
 
         # if file ends with CSV, read as CSV
@@ -1241,26 +1259,81 @@ class Application:
             self.df_total_forecasts = df_forecast_agents
             self.df_total_demand_fcst = df_demand_forecast_agents
 
-    def disaggregate_forecast(self, df: pd.DataFrame, col_to_disaggregate: str, disaggregation_column: str,
-                              disaggregation_dict: dict):
+    def disaggregate_forecast_workflow(self, method='Weighted_Forecast'):
+
+        df_to_disaggregate = copy.deepcopy(self.df_total_input)
+
+        if method == 'Weighted_Forecast':
+
+            df_disaggregation = self.read_data_from_path(method)
+            df_disaggregated = self.disaggregate_forecast_with_df(df_to_disaggregate,
+                                                                  df_disaggregation)
+
+        else:
+            disaggregation_dict = self.get_parameter('Segmentacion')
+            df_disaggregated = self.disaggregate_forecast_with_dict(df_to_disaggregate,
+                                                                    'Pronóstico',
+                                                                    'Grupo',
+                                                                    disaggregation_dict)
+
+        return df_disaggregated
+
+    def disaggregate_forecast_with_df(self, df_to_disaggregate: pd.DataFrame, df_disaggregation: pd.DataFrame):
+
+        # Create copies to edit
+        df_to_disaggregate_local = copy.deepcopy(df_to_disaggregate)
+        df_disaggregation_local = copy.deepcopy(df_disaggregation)
+
+        # Change column names
+        df_disaggregation_local.columns = ['Fecha',
+                                           'Ruta',
+                                           'Codigo',
+                                           'Nombre',
+                                           'Pronostico_disagg',
+                                           'Unidad_Medida']
+
+        # Drop unnecessary columns
+        df_disaggregation_local = df_disaggregation_local[['Fecha', 'Ruta', 'Codigo', 'Pronostico_disagg']]
+
+        # Reset index and drop unnecessary columns
+        df_to_disaggregate_local = df_to_disaggregate_local.reset_index()
+        df_to_disaggregate_local.columns = ['Fecha', 'Codigo', 'Nombre', 'Pronostico_agg']
+
+        # Create disaggregated dataframe
+        df_disaggregated = df_to_disaggregate_local.merge(df_disaggregation_local, on=['Fecha', 'Codigo'], how='outer')
+
+        # Multiply aggregate forecast with disaggregate forecast to disaggregate the aggregate forecast
+        df_disaggregated['Pronóstico'] = df_disaggregated['Pronostico_agg'] * df_disaggregated['Pronostico_disagg']
+
+        # Drop unnecessary columns
+        df_disaggregated = df_disaggregated[['Fecha',
+                                             'Ruta',
+                                             'Codigo',
+                                             'Nombre',
+                                             'Pronóstico']]
+
+        return df_disaggregated
+
+    def disaggregate_forecast_with_dict(self, df: pd.DataFrame, col_to_disaggregate: str, disaggregation_column: str,
+                                        disaggregation_dict: dict):
 
         df_disaggregated = pd.DataFrame()
-        segment_dict = self.get_parameter('Segmentacion')
 
         # For each sales group, get a new dataframe and concatenate each to an empty one.
-        for key, value in segment_dict.items():
-            df['Grupo'] = key
-            df['Pronóstico'] = df['Pronóstico'] * float(value)
+        for key, value in disaggregation_dict.items():
+            df[disaggregation_column] = key
+            df[col_to_disaggregate] = df[col_to_disaggregate] * float(value)
             df_disaggregated = pd.concat([df_disaggregated, df], axis=0)
 
         return df_disaggregated
 
-    def convert_to_percentage(self, df):
+    def weight_forecast(self, df):
 
         df_grouped = df.groupby(['Fecha', 'Agente'])['Pronóstico'].sum().reset_index()
         df_grouped.columns = ['Fecha', 'Agente', 'Total']
         df_proportions = df.merge(df_grouped, on=['Fecha', 'Agente'], how='left')
         df_proportions['Pronóstico %'] = df_proportions['Pronóstico'] / df_proportions['Total']
+        df_proportions = df_proportions.fillna(0)
 
         df_proportions.drop(columns=['Total', 'Pronóstico'], inplace=True)
 
@@ -1281,6 +1354,10 @@ class Application:
                 raise ValueError('The model has to be trained first.')
             else:
                 df = self.df_total_forecasts
+
+        elif kwargs.keys().__contains__('df'):
+            df = kwargs['df']
+
         # If the process is Forecast or Metrics, use the input as the df to export.
         else:
             df = self.df_total_input
@@ -1297,11 +1374,6 @@ class Application:
         # Get the date from the datetime values
         df['Fecha'] = df['Fecha'].dt.date
 
-        # If the process is Forecast, divide each product forecast into the user-defined sales groups.
-        if process == 'Forecast' and kwargs['disaggregate']:
-            disaggregation_dict = self.get_parameter('Segmentacion')
-            df = self.disaggregate_forecast(df, 'Pronóstico', 'Grupo', disaggregation_dict)
-
         # --- COLUMN MAPPING AND SIZES ---
 
         # If process is Demand, 6 columns.
@@ -1317,22 +1389,23 @@ class Application:
         # If process is Demand Agent, 11 columns.
         elif process == 'Demand_Agent':
 
-            df = self.convert_to_percentage(df)
+            if kwargs['weighted_forecast']:
+                df = self.weight_forecast(df)
 
             # Add the master data to the forecast DF
             df = df.merge(self.df_master_data[['Codigo', 'Unidad_Medida']], on='Codigo', how='left')
 
             # Add extra columns
-            df['Fecha creacion'] = datetime.date.today().strftime('%d-%m-%Y')
-            df['Codigo cliente'] = 'ESTIMADO'
-            df['Nombre cliente'] = 'Estimado por agente'
+            # df['Fecha creacion'] = datetime.date.today().strftime('%d-%m-%Y')
+            # df['Codigo cliente'] = 'ESTIMADO'
+            # df['Nombre cliente'] = 'Estimado por agente'
 
             # Rename columns
             df = df.rename(columns={'Codigo': 'Codigo producto',
                                     'Nombre': 'Nombre producto'})
 
             # Column order
-            col_order = ['Fecha creacion',
+            '''col_order = ['Fecha creacion',
                          'Fecha',
                          'Agente',
                          'Codigo producto',
@@ -1342,10 +1415,19 @@ class Application:
                          'Pronóstico %',
                          'Unidad_Medida',
                          'Min',
-                         'Max']
+                         'Max']'''
 
+            col_order = ['Fecha',
+                         'Agente',
+                         'Codigo producto',
+                         'Nombre producto',
+                         'Pronóstico %',
+                         'Unidad_Medida',
+                         'Min',
+                         'Max']
             # Column sizes
-            col_sizes = [12, 12, 12, 12, 40, 12, 40, 12, 12, 12, 12]
+            # col_sizes = [12, 12, 12, 12, 40, 12, 40, 12, 12, 12, 12]
+            col_sizes = [12, 12, 12, 40, 12, 12, 12, 12]
 
         # If process is Forecast, 5 columns.
         elif process == 'Forecast':
