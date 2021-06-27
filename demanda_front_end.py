@@ -3,6 +3,7 @@ import datetime
 import os
 import queue
 import threading
+import time
 import tkinter
 from tkinter import *
 from tkinter import filedialog
@@ -98,6 +99,17 @@ def resource_path(relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+
+def open_window(master, slave, *args, **kwargs):
+    new_win = Toplevel(master)
+    slave(*args, **kwargs)
+    new_win.grab_set()
+    new_win.wait_window()
+
+
+def wait_5_seconds():
+    time.sleep(5)
 
 
 class Main:
@@ -495,7 +507,7 @@ class Main:
         self.sub_menu_config.entryconfig('Segmentación',
                                          state=segment_btn_state)
 
-        # --- MASTER BUTTON STATES ---
+        # --- TOOLBAR BUTTON STATES ---
 
         # Enable save, refresh buttons for every process
         self.btn_refresh['state'] = 'normal'
@@ -508,40 +520,61 @@ class Main:
             btn_run_state = 'disabled'
             btn_save_state = 'normal'
 
+        # Set state for Save and Run buttons
         self.btn_save['state'] = btn_save_state
         self.btn_run['state'] = btn_run_state
 
-        try:
-            # the path to the data has been validated, so the data can be separated into several datasets
-            # process must be specified to read the correct filepath
+        # Withdraw the master to show a loading screen
+        self.master.withdraw()
 
-            self.master.withdraw()
+        # Check if the application has been installed
+        app_is_installed = self.back_end.check_if_installed()
 
-            queue_ = queue.Queue()
-            initializing_thread = ThreadedClient_exp(queue_, self.back_end.create_input_df, [process, apply_bom])
-            initializing_thread.start()
-
-            self.new_win = Toplevel(self.master)
-            self.new_win.overrideredirect(1)
-            self.win_obj = WindowLoading(self.new_win, initializing_thread, self.screen_width, self.screen_height)
-            self.new_win.grab_set()
-            self.master.wait_window(self.new_win)
+        # If the app is not installed, show a welcome screen.
+        if not app_is_installed:
+            win = self.create_loading_screen(wait_5_seconds, 'Hola\nInstalando programa.')
 
             self.master.deiconify()
 
             # Pack Top and Bottom Frames to the Main Frame
             self.pack_to_main_frame()
 
-            # self.populate_tree(item_list)
-            self.add_filters(process)
-
-            # call function to update the plot and the table on the GUI
-            self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
-
-        # if the segmented data sets haven't been created, clear the GUI
-        except (KeyError, ValueError, FileNotFoundError, PermissionError, tkinter.TclError) as e:
-            self.open_window_pop_up('Error', e)
             self.clear_gui()
+
+        # If the app is installed, call the create_input_df function from the backend with a threaded client and show
+        # a loading screen.
+        else:
+            create_input_df_args = [process, apply_bom]
+            win = self.create_loading_screen(self.back_end.create_input_df,
+                                             'Cargando información...',
+                                             *create_input_df_args)
+
+            # If the loading screen encountered an error, clear the GUI.
+            if win.exited_with_error:
+                self.open_window_pop_up('Error', win.error)
+                self.master.deiconify()
+
+                # Pack Top and Bottom Frames to the Main Frame
+                self.pack_to_main_frame()
+                self.clear_gui()
+
+            else:
+
+                self.master.deiconify()
+
+                # Pack Top and Bottom Frames to the Main Frame
+                self.pack_to_main_frame()
+
+                # self.populate_tree(item_list)
+                self.add_filters(process)
+
+                # call function to update the plot and the table on the GUI
+                self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
+
+                # if the segmented data sets haven't been created, clear the GUI
+                # except (KeyError, ValueError, FileNotFoundError, PermissionError, tkinter.TclError) as e:
+                # self.open_window_pop_up('Error', e)
+                # self.clear_gui()
 
     def add_filters(self, process: str):
         """
@@ -551,7 +584,7 @@ class Main:
 
         self.lbl_name_agent = Label(self.frame_filters,
                                     bg=bg_color,
-                                    text='Agente')
+                                    text='Ruta')
 
         self.cbx_agent = ttk.Combobox(self.frame_filters,
                                       value=self.back_end.available_agents,
@@ -689,7 +722,7 @@ class Main:
             agent = filters[1]
             if agent == 'DEFAULT':
                 agent = self.back_end.available_agents[0]
-            df_total = df_total[df_total['Agente'] == agent]
+            df_total = df_total[df_total['Ruta'] == agent]
 
         # Get selected data frame based on the sku parameter.
         sku_name = filters[0]
@@ -917,7 +950,7 @@ class Main:
         # There can only be one selected item on the tree view.
         cols = ['Codigo', 'Nombre']
         if table_type in ['Demand_Agent', 'Model_Agent']:
-            cols = cols + ['Agente']
+            cols = cols + ['Ruta']
         try:
             df.drop(columns=cols, inplace=True)
         # when the models haven't been trained, the df only contains the values column
@@ -1075,7 +1108,7 @@ class Main:
             agent = filters[1]
             if agent == 'DEFAULT':
                 agent = self.back_end.available_agents[0]
-            df_metrics = df_metrics[df_metrics['Agente'] == agent]
+            df_metrics = df_metrics[df_metrics['Ruta'] == agent]
 
         sku = filters[0]
 
@@ -1105,7 +1138,7 @@ class Main:
 
         for idx, metric in enumerate(list(df_metrics.columns)):
 
-            if metric in ['Codigo', 'Agente', 'Nombre', 'Unidad_Medida']:
+            if metric in ['Codigo', 'Ruta', 'Nombre', 'Unidad_Medida']:
                 pass
 
             else:
@@ -1245,6 +1278,25 @@ class Main:
             self.back_end.apply_bom(self.back_end.raw_data, self.active_process)
             self.update_gui(self.active_process, apply_bom=True)
 
+    def create_loading_screen(self, func, loading_screen_msg: str, *args):
+        queue_ = queue.Queue()
+        initializing_thread = ThreadedClient_exp(queue_, func, *args)
+        initializing_thread.start()
+
+        # Create the temporary loading screen as a slave to the master
+        new_win = Toplevel(self.master)
+        new_win.overrideredirect(1)
+        win_obj = WindowLoading(new_win,
+                                initializing_thread,
+                                queue_,
+                                loading_screen_msg,
+                                self.screen_width,
+                                self.screen_height)
+        new_win.grab_set()
+        self.master.wait_window(new_win)
+
+        return win_obj
+
 
 class WindowSelectPath:
 
@@ -1322,6 +1374,18 @@ class WindowSelectPath:
                              column=2,
                              padx=5)
 
+        # Help button, fourth column, to open the Help window
+        self.btn_help = Button(self.paths_frame,
+                               text='Ayuda',
+                               command=self.btn_help_callback)
+        self.btn_help.grid(pady=10,
+                           row=0,
+                           column=3,
+                           padx=5)
+
+        # Center the window to the screen
+        center_window(self.master, self.screen_width, self.screen_height)
+
     def close_window(self, canceled: bool):
         self.canceled = canceled
         self.master.destroy()
@@ -1350,6 +1414,52 @@ class WindowSelectPath:
                                'El archivo puede ser en formato Excel o CSV.',
                                self.screen_width,
                                self.screen_height)
+
+    def btn_help_callback(self):
+
+        msg_bom = ['Archivo de Recetas:',
+                   '\n',
+                   'Debe ser un archivo Excel debe tener seis columnas:',
+                   '\n',
+                   'Codigo producto|Nombre producto|Cantidad producto|Codigo material|Nombre material|'
+                   'Cantidad material',
+                   '\n',
+                   'Codigo producto: es el codigo del producto final.',
+                   'Nombre producto: es el nombre del producto final.',
+                   'Cantidad producto: es la cantidad de unidades que tiene el producto final por defecto.',
+                   'Codigo material: es el codigo del material necesario para producir cada producto.'
+                   ' Pueden ser varios materiales por producto.',
+                   'Nombre material: es el nombre del material.',
+                   'Cantidad material: es la cantidad requerida del material utilizada para producir el producto.',
+                   '\n',
+                   '-----------------------------------------------------------']
+
+        msg_weighted_fcst = ['Segmentar pronóstico utilizando un pronóstico ponderado',
+                             '-----------------------------------------------------------',
+                             '\n',
+                             'Archivo de Pronóstico Ponderado:',
+                             '\n',
+                             'Debe ser un archivo Excel debe tener seis columnas:',
+                             '\n',
+                             'Fecha|Codigo|Nombre|Unidad medida|Ruta|Demanda',
+                             '\n',
+                             'Fecha: es la fecha de la transaccion.',
+                             'Ruta: es la ruta de venta, se puede indicadar el nombre del agente o el codigo '
+                             'de la ruta.',
+                             'Codigo: es el codigo del producto.',
+                             'Nombre: es el nombre del producto.',
+                             'Demanda: es la demanda del producto en la fecha indicada.',
+                             'Unidad medida: es la unidad de medida del producto.',
+                             '\n',
+                             '-----------------------------------------------------------']
+
+        dict_msg_options = {'BOM': msg_bom,
+                            'Weighted_Forecast': msg_weighted_fcst}
+
+        self.new_win = Toplevel()
+        WindowHelp(self.new_win, self.screen_width, self.screen_height, dict_msg_options[self.path_name_back_end])
+        self.new_win.grab_set()
+        self.new_win.wait_window()
 
 
 class WindowSelectWorkPath:
@@ -1424,7 +1534,7 @@ class WindowSelectWorkPath:
         self.modes_user_options = ['Crear pronóstico de demanda',
                                    'Cargar pronóstico de demanda',
                                    'Calcular métricas',
-                                   'Crear pronóstico por agente']
+                                   'Crear pronóstico por ruta']
         self.back_end_modes = self.app.modes
 
         self.cbx_file_type = ttk.Combobox(self.routine_frame,
@@ -1437,11 +1547,21 @@ class WindowSelectWorkPath:
 
         self.cbx_file_type.bind("<<ComboboxSelected>>", self.cbx_callback)
         self.cbx_file_type.grid(row=0,
-                                column=1,
-                                columnspan=3,
+                                column=0,
+                                # columnspan=3,
                                 padx=10,
                                 pady=10,
                                 sticky='WE')
+
+        # Help button
+        self.btn_help = Button(self.routine_frame,
+                               text='Ayuda',
+                               command=self.help_btn_callback)
+        self.btn_help.grid(row=0,
+                           column=2,
+                           padx=10,
+                           pady=10,
+                           sticky='E')
 
         # Paths Frame
 
@@ -1525,7 +1645,7 @@ class WindowSelectWorkPath:
     def add_first_path_to_grid(self, process: str, row: int):
 
         if process in ['Demand', 'Metrics', 'Demand_Agent']:
-            lbl_name = 'Ventas:'
+            lbl_name = 'Demanda:'
         else:
             lbl_name = 'Pronóstico:'
 
@@ -1658,8 +1778,7 @@ class WindowSelectWorkPath:
         if self.process == 'Metrics':
 
             lbl_dict_metrics = {self.lbl_path: ['Metrics_Demand', 'Ventas'],
-                                self.lbl_second_path: ['Metrics_Forecast', 'Pronóstico'],
-                                self.lbl_third_path: ['BOM', 'Recetas']}
+                                self.lbl_second_path: ['Metrics_Forecast', 'Pronóstico']}
 
             for key, values in lbl_dict_metrics.items():
                 path_ = key['text']
@@ -1739,7 +1858,7 @@ class WindowSelectWorkPath:
 
         elif process == 'Metrics':
             self.add_second_path_to_grid(process, 1)
-            self.add_third_path_to_grid(3)
+            # self.add_third_path_to_grid(3)
 
     def cb_callback(self):
 
@@ -1761,6 +1880,111 @@ class WindowSelectWorkPath:
         # freeze master window until user closes the pop up
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
+
+    def help_btn_callback(self):
+
+        msg_demand = ['Crear pronóstico de demanda',
+                      '-----------------------------------------------------------',
+                      'Archivo de Demanda:',
+                      '\n',
+                      'Debe ser un archivo Excel debe tener cuatro columnas:',
+                      '\n',
+                      'Fecha|Codigo|Nombre|Demanda',
+                      '\n',
+                      'Fecha: es la fecha de la transaccion.',
+                      'Codigo: es el codigo del producto.',
+                      'Nombre: es el nombre del producto.',
+                      'Demanda: es la demanda del producto en la fecha indicada.',
+                      '\n',
+                      '-----------------------------------------------------------'
+                      '\n',
+                      'Archivo de Recetas:',
+                      '\n',
+                      'Debe ser un archivo Excel debe tener seis columnas:',
+                      '\n',
+                      'Codigo producto|Nombre producto|Cantidad producto|Codigo material|Nombre material|'
+                      'Cantidad material',
+                      '\n',
+                      'Codigo producto: es el codigo del producto final.',
+                      'Nombre producto: es el nombre del producto final.',
+                      'Cantidad producto: es la cantidad de unidades que tiene el producto final por defecto.',
+                      'Codigo material: es el codigo del material necesario para producir cada producto.'
+                      ' Pueden ser varios materiales por producto.',
+                      'Nombre material: es el nombre del material.',
+                      'Cantidad material: es la cantidad requerida del material utilizada para producir el producto.',
+                      '\n',
+                      '-----------------------------------------------------------']
+
+        msg_load_forecast = ['Cargar pronóstico de demanda',
+                             '-----------------------------------------------------------',
+                             'Archivo de Pronóstico:',
+                             '\n',
+                             'Debe ser un archivo Excel debe tener cuatro columnas:',
+                             '\n',
+                             'Fecha|Codigo|Nombre|Pronóstico',
+                             '\n',
+                             'Fecha: es la fecha de la transaccion.',
+                             'Codigo: es el codigo del producto.',
+                             'Nombre: es el nombre del producto.',
+                             'Pronóstico: es la demanda pronosticada del producto en la fecha indicada.',
+                             '\n',
+                             '-----------------------------------------------------------']
+
+        msg_metrics = ['Calcular métricas',
+                       '-----------------------------------------------------------',
+                       'Archivo de Demanda:',
+                       '\n',
+                       'Debe ser un archivo Excel debe tener cuatro columnas:',
+                       '\n',
+                       'Fecha|Codigo|Nombre|Demanda',
+                       '\n',
+                       'Fecha: es la fecha de la transaccion.',
+                       'Codigo: es el codigo del producto.',
+                       'Nombre: es el nombre del producto.',
+                       'Demanda: es la demanda del producto en la fecha indicada.',
+                       '\n',
+                       '-----------------------------------------------------------',
+                       'Archivo de Pronóstico:',
+                       '\n',
+                       'Debe ser un archivo Excel debe tener cuatro columnas:',
+                       '\n',
+                       'Fecha|Codigo|Nombre|Pronóstico',
+                       '\n',
+                       'Fecha: es la fecha de la transaccion.',
+                       'Codigo: es el codigo del producto.',
+                       'Nombre: es el nombre del producto.',
+                       'Pronóstico: es la demanda pronosticada del producto en la fecha indicada.',
+                       '\n',
+                       '-----------------------------------------------------------'
+                       ]
+
+        msg_forecast_route = ['Crear pronóstico por ruta',
+                              '-----------------------------------------------------------',
+                              '\n',
+                              'Archivo de Demanda:',
+                              '\n',
+                              'Debe ser un archivo Excel debe tener cuatro columnas:',
+                              '\n',
+                              'Fecha|Ruta|Codigo|Nombre|Demanda|Unidad Medida',
+                              '\n',
+                              'Fecha: es la fecha de la transaccion.',
+                              'Ruta: es la ruta en la que se da la venta, se puede indicar el nombre del agente.',
+                              'Codigo: es el codigo del producto.',
+                              'Nombre: es el nombre del producto.',
+                              'Demanda: es la demanda del producto en la fecha indicada.',
+                              'Unidad Medida: es la unidad de medida del producto (ej: kg, ud).'
+                              '\n',
+                              '-----------------------------------------------------------']
+
+        dict_msg_options = {'Crear pronóstico de demanda': msg_demand,
+                            'Cargar pronóstico de demanda': msg_load_forecast,
+                            'Calcular métricas': msg_metrics,
+                            'Crear pronóstico por ruta': msg_forecast_route}
+
+        self.new_win = Toplevel()
+        WindowHelp(self.new_win, self.screen_width, self.screen_height, dict_msg_options[self.cbx_file_type.get()])
+        self.new_win.grab_set()
+        self.new_win.wait_window()
 
     def close_window(self):
         self.canceled = True
@@ -2298,13 +2522,13 @@ class WindowExportFile:
         self.thread_ = None
         self.process = process
         self.new_win = None
+        self.kwargs = kwargs
 
-        if kwargs['df'].keys().__contains__('df'):
+        if kwargs.keys().__contains__('df'):
             self.df = kwargs['df']
 
         # configure columns
         self.master.grid_columnconfigure((0, 1), uniform='equal', weight=1)
-
         column_span = 1
 
         # Master frame
@@ -2351,24 +2575,27 @@ class WindowExportFile:
                                  command=self.call_backend_export)
         self_btn_accept.grid(row=2, column=column_span + 1, padx=10)
 
+        # parameters for both Checkbuttons declared below
         chk_args = {'row': 3,
                     'column': 0,
                     'sticky': 'W'}
 
+        # Checkbutton to apply segmentation to the forecast, is only added to grid if self.process == 'Forecast'
         self.chk_var = IntVar()
         self.chk_btn = Checkbutton(self.frame_master,
                                    bg=bg_color,
                                    text='Aplicar segmentación?',
                                    variable=self.chk_var)
 
+        if self.process == 'Forecast':
+            self.chk_btn.grid(chk_args)
+
+        # Checkbutton to apply weights to the forecast, is only added to grid if self.process == 'Demand_Agent'
         self.var_weight_fcst = IntVar()
         self.chkbtn_weight_fcst = Checkbutton(self.frame_master,
                                               bg=bg_color,
                                               text='Ponderar pronóstico?',
                                               variable=self.var_weight_fcst)
-
-        if self.process == 'Forecast':
-            self.chk_btn.grid(chk_args)
 
         if self.process == 'Demand_Agent':
             self.chkbtn_weight_fcst.grid(chk_args)
@@ -2377,17 +2604,27 @@ class WindowExportFile:
         center_window(self.master, self.screen_width, self.screen_height)
 
     def call_backend_export(self):
+        """
+        Calls the export_data function from the backend using the selected parameters.
+        Opens a pop up window depending on the result of the export process.
+        """
 
+        # Get the extension
         ext_ = self.exts[self.combobox_extensions.get()]
 
+        # Set the argument list to call the export_data function from the backend
         list_args_export = [self.btn_path['text'],
                             self.entry_output_file.get(),
                             ext_,
                             self.process]
 
+        # Set the kwargs dictionary to call the export_data function from the backend
         dict_kwargs_export = {'disaggregate': self.chk_var.get(),
-                              'weighted_forecast': self.var_weight_fcst.get(),
-                              'df': self.df}
+                              'weighted_forecast': self.var_weight_fcst.get()}
+
+        # If 'df' is in the kwargs keys, add the 'df' key to the kwargs dictionary.
+        if self.kwargs.keys().__contains__('df'):
+            dict_kwargs_export['df'] = self.df
 
         try:
             self.app.export_data(*list_args_export, **dict_kwargs_export)
@@ -2398,29 +2635,42 @@ class WindowExportFile:
         except ValueError:
 
             win_title = 'Advertencia'
-            win_msg = 'Archivo exportado.'
+            win_msg = 'Error al exportar el archivo.'
 
         except PermissionError:
 
             win_title = 'Error'
-            win_msg = 'El archivo está abierto.\nDebe cerrarlo antes de proceder.'
+            win_msg = 'Hay un archivo abierto con el mismo nombre.\nDebe cerrarlo antes de proceder.'
 
-        new_win = Toplevel(self.master)
-        WindowPopUpMessage(new_win,
-                           win_title,
-                           win_msg,
-                           self.screen_width,
-                           self.screen_height)
-        new_win.grab_set()
-        self.master.wait_window(new_win)
+        # Open pop up window with status message
+        pop_up_args = [win_title, win_msg, self.screen_width, self.screen_height]
+        self.open_window(WindowPopUpMessage, *pop_up_args)
 
-    def open_window_popup(self):
+        # Close the window after exporting.
+        self.close_window()
+
+    '''def open_window_select_path(self):
         """Open TopLevel to select path where the input files are located."""
 
         # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
         # this window is closed
         self.new_win = Toplevel(self.master)
         WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
+        self.new_win.grab_set()
+        self.master.wait_window(self.new_win)
+
+        self.close_window()'''
+
+    def open_window(self, window, *args, **kwargs):
+        """Open a window with a slave Toplevel, the master is frozen until the user closes the slave."""
+
+        # Declare the slave
+        self.new_win = Toplevel(self.master)
+
+        # Call the window class
+        window(self.new_win, *args, **kwargs)
+
+        # Freeze the master until user closes the slave.
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
 
@@ -2437,7 +2687,7 @@ class WindowExportFile:
 
 
 class WindowSegmentOptions:
-    def __init__(self, master, app:Application, screen_width, screen_height):
+    def __init__(self, master, app: Application, screen_width, screen_height):
         self.master = master
         self.app = app
         self.master.title("Segmentación de pronóstico")
@@ -2476,12 +2726,16 @@ class WindowSegmentOptions:
         cbx_options = ['Usar pronóstico ponderado',
                        'Método manual']
         self.cbx_segment_options = ttk.Combobox(self.lbl_frame_segments,
-                                                value=cbx_options)
+                                                value=cbx_options,
+                                                width=50)
         self.cbx_segment_options.current(0)
         self.cbx_segment_options.grid(row=2,
                                       column=0,
                                       pady=5,
                                       sticky='WE')
+
+        # Center the window to the screen
+        center_window(self.master, self.screen_width, self.screen_height)
 
     def close_window(self):
         self.master.destroy()
@@ -2518,18 +2772,33 @@ class WindowSegmentOptions:
         else:
             disaggregation_method = 'Disaggregate_Dict'
 
-        df_disaggregated = self.app.disaggregate_forecast_workflow(disaggregation_method)
+        try:
+            df_disaggregated = self.app.disaggregate_forecast_workflow(disaggregation_method)
 
-        new_win_export = Toplevel(self.master)
-        win_obj = WindowExportFile(new_win_export, self.app, self.screen_width, self.screen_height, 'Forecast',
-                                   df=df_disaggregated)
-        new_win_export.grab_set()
-        new_win_export.wait_window()
+            new_win_export = Toplevel(self.master)
+            WindowExportFile(new_win_export, self.app, self.screen_width, self.screen_height, 'Forecast',
+                             df=df_disaggregated)
+            new_win_export.grab_set()
+            new_win_export.wait_window()
+
+            self.close_window()
+
+        except PermissionError as e:
+            self.open_window_pop_up('Error', e)
+
+    def open_window_pop_up(self, title, msg):
+
+        new_win = Toplevel(self.master)
+        WindowPopUpMessage(new_win, title, msg, self.screen_width, self.screen_height)
+        new_win.grab_set()
+        new_win.wait_window()
+
 
 class WindowLoading:
-    def __init__(self, master, thread, screen_width, screen_height):
+    def __init__(self, master, thread, queue_, loading_msg, screen_width, screen_height):
         self.master = master
         self.thread = thread
+        self.queue_ = queue_
         self.master.iconbitmap(resource_path(r'res/icon.ico'))
         self.screen_width = screen_width
         self.screen_height = screen_height
@@ -2537,11 +2806,14 @@ class WindowLoading:
         self.height = screen_height / 5
         self.master.configure(background=brand_green)
 
+        self.exited_with_error = False
+        self.error = None
+
         main_frame = Frame(self.master, bg=brand_green, padx=100, pady=100)
         main_frame.pack()
 
         loading_label = Label(main_frame,
-                              text='Cargando información',
+                              text=loading_msg,
                               bg=brand_green,
                               font=("Calibri Light", 28),
                               fg='white')
@@ -2563,11 +2835,75 @@ class WindowLoading:
 
     def periodic_call(self):
 
+        self.check_queue()
+
         if self.thread.is_alive():
             self.master.after(100, self.periodic_call)
 
         else:
             self.close_window()
+
+    def check_queue(self):
+        while self.queue_.qsize():
+            try:
+                msg = self.queue_.get(False)
+
+                if msg[0] == 'Error':
+                    self.exited_with_error = True
+                    self.error = msg[1]
+                    self.close_window()
+
+            except self.queue_.empty:
+                pass
+
+
+class WindowHelp:
+    def __init__(self, master, screen_width, screen_height, message: list):
+        self.master = master
+        self.master.title('Ayuda')
+        self.master.iconbitmap(resource_path(r'res/icon.ico'))
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+
+        # Main Frame
+        self.main_frame = Frame(self.master,
+                                bg=bg_color,
+                                padx=20,
+                                pady=20,
+                                borderwidth=2,
+                                relief='groove')
+        self.main_frame.pack(fill=BOTH, expand=True)
+
+        # Create a Listbox
+        listbox = Listbox(self.main_frame, width=100)
+
+        # Adding Listbox to the left
+        # side of root window
+        listbox.pack(side=LEFT, fill=BOTH, expand=True)
+
+        # Create a Scrollbar
+        scrollbar = Scrollbar(self.main_frame)
+
+        # Adding Scrollbar to the right
+        # side of root window
+        scrollbar.pack(side=RIGHT, fill=BOTH)
+
+        # Insert elements into the listbox
+        for msgs in message:
+            listbox.insert(END, msgs)
+
+        # Attaching Listbox to Scrollbar
+        # Since we need to have a vertical
+        # scroll we use yscrollcommand
+        listbox.config(yscrollcommand=scrollbar.set)
+
+        # setting scrollbar command parameter
+        # to listbox.yview method its yview because
+        # we need to have a vertical view
+        scrollbar.config(command=listbox.yview)
+
+        # Center the window to the screen
+        center_window(self.master, self.screen_width, self.screen_height)
 
 
 class ThreadedClient(threading.Thread):
@@ -2592,7 +2928,11 @@ class ThreadedClient_exp(threading.Thread):
         self.kwargs = kwargs
 
     def run(self):
-        self.func(*self.args[0], **self.kwargs)
+
+        try:
+            self.func(*self.args, **self.kwargs)
+        except (KeyError, ValueError, FileNotFoundError, PermissionError, tkinter.TclError) as e:
+            self.queue_.put(['Error', e])
 
 
 if __name__ == '__main__':
