@@ -112,6 +112,25 @@ def wait_5_seconds():
     time.sleep(5)
 
 
+def close_window(instance, master, canceled: bool):
+    """
+    Uses the tkinter destroy method on 'master' Toplevel and updates the canceled attribute of the class instance.
+
+    Args:
+        instance: instance of a Window_ class.
+        master: The tkinter Toplevel.
+        canceled: instance's boolean attribute that states if an action was canceled.
+
+    Returns:
+        None
+    """
+    # Update the canceled attribute of the instance.
+    instance.canceled = canceled
+
+    # Destroy
+    master.destroy()
+
+
 class Main:
 
     @staticmethod
@@ -1339,7 +1358,7 @@ class WindowSelectPath:
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=lambda: self.close_window(canceled=True))
+                                 command=lambda: close_window(self, self.master, True))
         self.btn_cancel.grid(pady=10, row=2, column=1)
 
         # Name Label, first column
@@ -1386,10 +1405,6 @@ class WindowSelectPath:
         # Center the window to the screen
         center_window(self.master, self.screen_width, self.screen_height)
 
-    def close_window(self, canceled: bool):
-        self.canceled = canceled
-        self.master.destroy()
-
     def get_user_selected_path(self):
         self.selected_path = browse_files_master(self.app.get_path('Temp'))
         self.lbl_path['text'] = self.selected_path[1]
@@ -1404,7 +1419,7 @@ class WindowSelectPath:
 
             # Set selected path to back end.
             self.app.set_path(self.path_name_back_end, selected_path)
-            self.close_window(canceled=False)
+            close_window(self, self.master, False)
 
         # If path is invalid, open pop up warning.
         else:
@@ -1524,7 +1539,7 @@ class WindowSelectWorkPath:
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=self.close_window)
+                                 command=lambda: close_window(self, self.master, True))
         self.btn_cancel.grid(pady=10, row=2, column=1)
 
         # --- LEVEL 1 ---
@@ -1815,10 +1830,9 @@ class WindowSelectWorkPath:
 
         # create separate datasets for each of the unique products
         try:
-            # self.open_window_pop_up('Mensaje', 'Archivos cargados.')
             self.successful_load = True
             self.app.set_parameter('Mode', self.process)
-            self.close_window()
+            close_window(self, self.master, True)
 
         except ValueError as e:
             self.open_window_pop_up('Error', e)
@@ -1887,7 +1901,7 @@ class WindowSelectWorkPath:
                       '-----------------------------------------------------------',
                       'Archivo de Demanda:',
                       '\n',
-                      'Debe ser un archivo Excel debe tener cuatro columnas:',
+                      'Debe ser un archivo Excel debe tener las siguientes columnas:',
                       '\n',
                       'Fecha|Codigo|Nombre|Demanda',
                       '\n',
@@ -1900,7 +1914,7 @@ class WindowSelectWorkPath:
                       '\n',
                       'Archivo de Recetas:',
                       '\n',
-                      'Debe ser un archivo Excel debe tener seis columnas:',
+                      'Debe ser un archivo Excel debe tener las siguientes columnas:',
                       '\n',
                       'Codigo producto|Nombre producto|Cantidad producto|Codigo material|Nombre material|'
                       'Cantidad material',
@@ -1919,7 +1933,7 @@ class WindowSelectWorkPath:
                              '-----------------------------------------------------------',
                              'Archivo de Pronóstico:',
                              '\n',
-                             'Debe ser un archivo Excel debe tener cuatro columnas:',
+                             'Debe ser un archivo Excel debe tener las siguientes columnas:',
                              '\n',
                              'Fecha|Codigo|Nombre|Pronóstico',
                              '\n',
@@ -1934,7 +1948,7 @@ class WindowSelectWorkPath:
                        '-----------------------------------------------------------',
                        'Archivo de Demanda:',
                        '\n',
-                       'Debe ser un archivo Excel debe tener cuatro columnas:',
+                       'Debe ser un archivo Excel debe tener las siguientes columnas:',
                        '\n',
                        'Fecha|Codigo|Nombre|Demanda',
                        '\n',
@@ -1946,7 +1960,7 @@ class WindowSelectWorkPath:
                        '-----------------------------------------------------------',
                        'Archivo de Pronóstico:',
                        '\n',
-                       'Debe ser un archivo Excel debe tener cuatro columnas:',
+                       'Debe ser un archivo Excel debe tener las siguientes columnas:',
                        '\n',
                        'Fecha|Codigo|Nombre|Pronóstico',
                        '\n',
@@ -1955,24 +1969,23 @@ class WindowSelectWorkPath:
                        'Nombre: es el nombre del producto.',
                        'Pronóstico: es la demanda pronosticada del producto en la fecha indicada.',
                        '\n',
-                       '-----------------------------------------------------------'
-                       ]
+                       '-----------------------------------------------------------']
 
         msg_forecast_route = ['Crear pronóstico por ruta',
                               '-----------------------------------------------------------',
                               '\n',
                               'Archivo de Demanda:',
                               '\n',
-                              'Debe ser un archivo Excel debe tener cuatro columnas:',
+                              'Debe ser un archivo Excel debe tener las siguientes columnas:',
                               '\n',
-                              'Fecha|Ruta|Codigo|Nombre|Demanda|Unidad Medida',
+                              'Fecha|Ruta|Codigo|Nombre|Unidad Medida|Demanda|',
                               '\n',
                               'Fecha: es la fecha de la transaccion.',
                               'Ruta: es la ruta en la que se da la venta, se puede indicar el nombre del agente.',
                               'Codigo: es el codigo del producto.',
                               'Nombre: es el nombre del producto.',
+                              'Unidad Medida: es la unidad de medida del producto (ej: kg, ud).',
                               'Demanda: es la demanda del producto en la fecha indicada.',
-                              'Unidad Medida: es la unidad de medida del producto (ej: kg, ud).'
                               '\n',
                               '-----------------------------------------------------------']
 
@@ -1985,10 +1998,6 @@ class WindowSelectWorkPath:
         WindowHelp(self.new_win, self.screen_width, self.screen_height, dict_msg_options[self.cbx_file_type.get()])
         self.new_win.grab_set()
         self.new_win.wait_window()
-
-    def close_window(self):
-        self.canceled = True
-        self.master.destroy()
 
 
 class WindowSegmentManual:
@@ -2052,7 +2061,7 @@ class WindowSegmentManual:
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=lambda: self.close_window(True))
+                                 command=lambda: close_window(self, self.master, True))
         self.btn_cancel.grid(pady=10, row=2, column=2)
 
         # --- NIVEL 1 ---
@@ -2215,14 +2224,7 @@ class WindowSegmentManual:
 
             self.app.set_parameter('Segmentacion', new_dict)
 
-            self.close_window()
-
-    def close_window(self, canceled=False):
-
-        if canceled:
-            self.canceled = True
-
-        self.master.destroy()
+            close_window(self, self.master, True)
 
     def open_window_pop_up(self, title, msg):
         self.new_win = Toplevel(self.master)
@@ -2245,6 +2247,7 @@ class WindowPopUpMessage:
         self.screen_height_ = screen_height_
         self.width = self.screen_width_ / 5
         self.height = self.screen_height_ / 4
+        self.canceled = False
 
         # --- LEVEL 0 ---
         # Frame with border that contains the message and the button.
@@ -2257,15 +2260,15 @@ class WindowPopUpMessage:
         self.main_frame.pack(padx=20,
                              pady=20)
 
-        # Boton para aceptar y cerrar
+        # Button to close the window.
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
-                                 command=self.close_window)
+                                 command=lambda: close_window(self, self.master, False))
         self.btn_accept.pack(padx=10, pady=10)
 
         # --- LEVEL 1 ---
 
-        # Label para desplegar el mensaje
+        # Label to display a message.
         self.message = Label(self.main_frame,
                              text=message,
                              bg=bg_color,
@@ -2309,7 +2312,7 @@ class WindowPopUpMessageWithCancel:
         # Boton para aceptar y cerrar
         self.btn_accept = Button(self.master,
                                  text='Aceptar',
-                                 command=lambda: self.close_window('Aceptar'))
+                                 command=lambda: close_window(self, self.master, False))
         self.btn_accept.grid(row=1,
                              column=0,
                              pady=(0, 5))
@@ -2317,7 +2320,7 @@ class WindowPopUpMessageWithCancel:
         # Boton para aceptar y cerrar
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=lambda: self.close_window('Cancelar'))
+                                 command=lambda: close_window(self, self.master, True))
         self.btn_cancel.grid(row=1,
                              column=1,
                              pady=(0, 5))
@@ -2334,125 +2337,6 @@ class WindowPopUpMessageWithCancel:
 
         center_window(self.master, self.screen_width_, self.screen_height_)
 
-    def close_window(self, canceled):
-
-        if canceled == 'Cancelar':
-            self.canceled = True
-        else:
-            self.canceled = False
-
-        self.master.destroy()
-
-
-class ConfigModel:
-    def __init__(self, master, app: Application, screen_width, screen_height, model: str):
-        self.master = master
-        self.master.iconbitmap(resource_path(r'res/icon.ico'))
-        self.app = app
-        self.screen_width = screen_width
-        self.screen_height = screen_height
-        self.model = model
-
-        # dictionary to save models with respective widgets
-        self.dict_selected = {}
-
-        if self.model == 'Auto-regresión':
-            self.model = 'AutoReg'
-
-        # --- LEVEL 0: LABEL FRAME AND BUTTONS
-        self.main_frame = LabelFrame(self.master,
-                                     text='Configuración',
-                                     padx=10,
-                                     pady=10)
-        self.main_frame.grid(row=0, column=0, columnspan=2)
-
-        self.btn_accept = Button(self.master,
-                                 text='Aceptar',
-                                 command=self.save_to_shelf)
-        self.btn_accept.grid(row=1, column=0)
-
-        self.btn_cancel = Button(self.master,
-                                 text='Cancelar',
-                                 command=self.close_window)
-        self.btn_cancel.grid(row=1, column=1)
-
-        # --- LEVEL 1: CONFIG WIDGETS ---
-        # get possible values for all parameters from dictionary of models and parameters
-        shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
-
-        # get possible values key of active model
-        model_params = shelf_dict[self.model]['params']
-
-        # table headers
-        Label(self.main_frame, text='Parámetro').grid(row=0, column=0, padx=10, pady=10)
-        Label(self.main_frame, text='Valor').grid(row=0, column=1, padx=10, pady=10)
-
-        # loop over all the items in the possible values dictionary
-        for idx, item in enumerate(model_params.items()):
-
-            # the enumerate function returns and index as idx and a tuple as item
-            # the first item of the tuple is the parameter name
-            # the second item of the tuple is the parameter value
-
-            param_name = item[0]
-            curr_value = item[1][0]
-            possible_values = item[1][1]
-
-            # set parameter name to label
-            lbl = Label(self.main_frame,
-                        text=param_name)
-            # index + 1 because of the headers
-            lbl.grid(row=idx + 1, column=0, padx=10, pady=10)
-
-            # according to the type, choose type of widget
-            # if the itemtype is a list, the widget must be a combobox with said list as possible values
-            if type(possible_values) == tuple:
-                # shelf_dict = ConfigShelf(self.app.path_config_shelf).send_dict()
-
-                try:
-                    # try to convert to int
-                    curr_value = int(curr_value)
-                except ValueError:
-                    pass
-
-                # declare combobox with the values as the possible parameter values
-                widget = ttk.Combobox(self.main_frame, value=possible_values)
-                widget.current(possible_values.index(curr_value))
-                widget.grid(row=idx + 1, column=1, padx=10)
-
-                # set widget type to key of dict selected, to save parameters to the right key
-                self.dict_selected[param_name] = widget
-
-            # if the item type is type, the widget must be an entry to allow for user input
-            if type(possible_values) == type:
-                # get the current parameter value from the params key of the dictionary
-                widget = Entry(self.main_frame, width=30)
-                widget.insert(END, curr_value)
-                widget.grid(row=idx + 1, column=1, padx=10)
-
-                # set widget type to key of dict selected, to save parameters to the right key
-                self.dict_selected[param_name] = widget
-
-    def save_to_shelf(self):
-        """Save chosen parameters to the config shelf."""
-
-        # loop over the saved parameters
-        for key, widget in self.dict_selected.items():
-            # get current value from the widget
-            val = widget.get()
-
-            # declare ConfigShelf instance to be able to write to the shelf
-            shelf_dict = ConfigShelf(self.app.path_config_shelf)
-
-            # write to shelf using the key as a parameter, and the value currently selected with the widget as value
-            shelf_dict.write_to_shelf(parameter=key, value=val, model=self.model)
-
-        # close window after saving
-        self.close_window()
-
-    def close_window(self):
-        self.master.destroy()
-
 
 class WindowTraining:
     def __init__(self, master, app: Application, queue_, thread_, width, height):
@@ -2463,6 +2347,7 @@ class WindowTraining:
         self.height = height
         self.queue_ = queue_
         self.thread_ = thread_
+        self.canceled = False
 
         # --- WIDGETS ---
 
@@ -2493,7 +2378,7 @@ class WindowTraining:
 
         else:
             # close window
-            self.close_window()
+            close_window(self, self.master, False)
 
     def check_queue(self):
         while self.queue_.qsize():
@@ -2523,6 +2408,8 @@ class WindowExportFile:
         self.process = process
         self.new_win = None
         self.kwargs = kwargs
+
+        self.canceled = False
 
         if kwargs.keys().__contains__('df'):
             self.df = kwargs['df']
@@ -2647,19 +2534,7 @@ class WindowExportFile:
         self.open_window(WindowPopUpMessage, *pop_up_args)
 
         # Close the window after exporting.
-        self.close_window()
-
-    '''def open_window_select_path(self):
-        """Open TopLevel to select path where the input files are located."""
-
-        # new toplevel with master root, grab_set and wait_window to wait for the main screen to freeze until
-        # this window is closed
-        self.new_win = Toplevel(self.master)
-        WindowSelectWorkPath(self.new_win, self.app, self.screen_width, self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
-
-        self.close_window()'''
+        close_window(self, self.master, False)
 
     def open_window(self, window, *args, **kwargs):
         """Open a window with a slave Toplevel, the master is frozen until the user closes the slave."""
@@ -2673,9 +2548,6 @@ class WindowExportFile:
         # Freeze the master until user closes the slave.
         self.new_win.grab_set()
         self.master.wait_window(self.new_win)
-
-    def close_window(self):
-        self.master.destroy()
 
     def browse_files(self):
         filename = filedialog.askdirectory(initialdir=self.app.file_paths_shelf.send_path('Working'),
@@ -2697,6 +2569,7 @@ class WindowSegmentOptions:
         self.screen_height = screen_height
         self.width = self.screen_width / 2
         self.height = self.screen_height / 5
+        self.canceled = False
 
         # Container Frame for the paths
         self.lbl_frame_segments = LabelFrame(self.master,
@@ -2719,7 +2592,7 @@ class WindowSegmentOptions:
 
         self.btn_cancel = Button(self.master,
                                  text='Cancelar',
-                                 command=self.close_window)
+                                 command=lambda: close_window(self, self.master, True))
         self.btn_cancel.grid(pady=10, row=2, column=1)
 
         # Combobox to choose segmentation method
@@ -2736,9 +2609,6 @@ class WindowSegmentOptions:
 
         # Center the window to the screen
         center_window(self.master, self.screen_width, self.screen_height)
-
-    def close_window(self):
-        self.master.destroy()
 
     def accept_callback(self):
 
@@ -2765,7 +2635,7 @@ class WindowSegmentOptions:
         self.master.wait_window(self.new_win)
 
         if win_obj.canceled:
-            self.close_window()
+            close_window(self, self.master, True)
 
         if user_selection == 'Usar pronóstico ponderado':
             disaggregation_method = 'Weighted_Forecast'
@@ -2781,7 +2651,7 @@ class WindowSegmentOptions:
             new_win_export.grab_set()
             new_win_export.wait_window()
 
-            self.close_window()
+            close_window(self, self.master, False)
 
         except PermissionError as e:
             self.open_window_pop_up('Error', e)
@@ -2805,6 +2675,7 @@ class WindowLoading:
         self.width = screen_width / 2
         self.height = screen_height / 5
         self.master.configure(background=brand_green)
+        self.canceled = False
 
         self.exited_with_error = False
         self.error = None
@@ -2841,7 +2712,7 @@ class WindowLoading:
             self.master.after(100, self.periodic_call)
 
         else:
-            self.close_window()
+            close_window(self, self.master, False)
 
     def check_queue(self):
         while self.queue_.qsize():
@@ -2851,7 +2722,8 @@ class WindowLoading:
                 if msg[0] == 'Error':
                     self.exited_with_error = True
                     self.error = msg[1]
-                    self.close_window()
+
+                    close_window(self, self.master, False)
 
             except self.queue_.empty:
                 pass
