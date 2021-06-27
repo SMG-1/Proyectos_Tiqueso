@@ -103,7 +103,7 @@ def df_to_excel(wb: Workbook, df: pd.DataFrame, sheet_: Worksheet, row_ini: 1, a
 def fill_dates_in_df(df: pd.DataFrame, date: datetime.date):
     df = df.reset_index()
     if 'Unidad_Medida' in list(df.columns):
-        df = df.groupby(['Fecha', 'Codigo', 'Nombre', 'Unidad_Medida', 'Agente']).sum().reset_index()
+        df = df.groupby(['Fecha', 'Codigo', 'Nombre', 'Unidad_Medida', 'Ruta']).sum().reset_index()
     else:
         df = df.groupby(['Fecha', 'Codigo', 'Nombre']).sum().reset_index()
 
@@ -606,10 +606,10 @@ class Application:
                                                   'Grupo',
                                                   'Pronóstico'],
                        'Demand_Agent': ['Fecha',
+                                        'Ruta',
                                         'Codigo',
                                         'Nombre',
                                         'Unidad_Medida',
-                                        'Agente',
                                         'Demanda']}
         file_name = col_mapping[process_][-1]
         cols = col_mapping[process_]
@@ -818,7 +818,7 @@ class Application:
         # Clean data upon function call, must read and clean two files
         if process_ == 'Metrics':
             df_metrics_demand = self.clean_data('Metrics_Demand')
-            df_metrics_demand = self.apply_bom(df_metrics_demand, process_)
+            # df_metrics_demand = self.apply_bom(df_metrics_demand, process_)
             df_metrics_fcst = self.clean_data('Metrics_Forecast')
             df_input = self.create_metrics_df(df_metrics_demand, df_metrics_fcst)
 
@@ -855,13 +855,13 @@ class Application:
         if process_ == 'Demand_Agent':
             # If running the Demand_Agent process, create a list of all the unique agents.
 
-            self.available_agents = [agent for agent in df_input.loc[:, 'Agente'].unique()]
+            self.available_agents = [agent for agent in df_input.loc[:, 'Ruta'].unique()]
             df_input.drop(columns=['Unidad_Medida'], inplace=True)
 
             temp_df = pd.DataFrame()
 
             for agent in self.available_agents:
-                df_agent = df_input[df_input['Agente'] == agent]
+                df_agent = df_input[df_input['Ruta'] == agent]
 
                 df_agent = df_agent.drop(columns=['Nombre']).reset_index(). \
                     merge(self.df_master_data, on='Codigo', how='left').set_index(['Fecha'])
@@ -1030,7 +1030,7 @@ class Application:
             df_demand_forecast_skus = pd.concat([df_demand_forecast_skus, df_sku_demand_fcst], axis=0)
 
             try:
-                df_demand_forecast_skus['Agente'] = df_demand_forecast_skus['Agente'].ffill()
+                df_demand_forecast_skus['Ruta'] = df_demand_forecast_skus['Ruta'].ffill()
             except KeyError:
                 pass
 
@@ -1123,6 +1123,16 @@ class Application:
         return df_metrics_skus
 
     def fit_forecast_evaluate_pipeline(self, process: str, queue_):
+        """
+        Creates a DataFrame with metrics for each SKU in sku_list and concatenates to a master DataFrame.
+
+        Args:
+            df_fitted_skus: Dataframe with demand and forecast as columns for all SKUs.
+            sku_list = list of all SKUs
+
+        Returns:
+            Master DataFrame with all the metrics for each SKU.
+         """
 
         df_total_input = copy.deepcopy(self.df_total_input)
 
@@ -1162,7 +1172,7 @@ class Application:
             # get total sku amount
             sku_amount = 0
             for agent in self.available_agents:
-                df_agent = df_total_input[df_total_input['Agente'] == agent]
+                df_agent = df_total_input[df_total_input['Ruta'] == agent]
                 sku_list_agent = list(df_agent['Codigo'].unique())
                 sku_amount += len(sku_list_agent)
 
@@ -1171,7 +1181,7 @@ class Application:
                 queue_.put([f'Entrenando modelos para {agent}.\n', 0])
                 print(f'Entrenando modelos para {agent}.\n')
 
-                df_agent = df_total_input[df_total_input['Agente'] == agent]
+                df_agent = df_total_input[df_total_input['Ruta'] == agent]
 
                 sku_list_agent = list(df_agent['Codigo'].unique())
 
@@ -1188,8 +1198,8 @@ class Application:
                 df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
                                                                                    sku_list_agent,
                                                                                    dict_fitted_models_sku)
-                df_forecast_skus['Agente'] = agent
-                df_demand_forecast_skus['Agente'] = df_demand_forecast_skus['Agente'].ffill()
+                df_forecast_skus['Ruta'] = agent
+                df_demand_forecast_skus['Ruta'] = df_demand_forecast_skus['Ruta'].ffill()
 
                 df_forecast_agents = pd.concat([df_forecast_agents,
                                                 df_forecast_skus],
@@ -1200,7 +1210,7 @@ class Application:
 
                 df_metrics_skus = self.calculate_metrics_sku_list(df_fitted_skus,
                                                                   sku_list_agent)
-                df_metrics_skus['Agente'] = agent
+                df_metrics_skus['Ruta'] = agent
                 df_metrics_agents = pd.concat([df_metrics_agents,
                                                df_metrics_skus],
                                               axis=0)
@@ -1240,14 +1250,14 @@ class Application:
             df_demand_forecast_agents = pd.DataFrame()
             for agent in self.available_agents:
                 sku_list_agent = list(self.dict_models_agent[agent].keys())
-                df_fitted_skus = df_fitted_agents[df_fitted_agents['Agente'] == agent]
+                df_fitted_skus = df_fitted_agents[df_fitted_agents['Ruta'] == agent]
                 dict_fitted_models_sku = self.dict_models_agent[agent]
 
                 df_forecast_skus, df_demand_forecast_skus = self.forecast_sku_list(df_fitted_skus,
                                                                                    sku_list_agent,
                                                                                    dict_fitted_models_sku)
 
-                df_forecast_skus['Agente'] = agent
+                df_forecast_skus['Ruta'] = agent
 
                 df_forecast_agents = pd.concat([df_forecast_agents,
                                                 df_forecast_skus],
@@ -1312,6 +1322,9 @@ class Application:
                                              'Nombre',
                                              'Pronóstico']]
 
+        # Set Fecha as index
+        df_disaggregated = df_disaggregated.set_index('Fecha')
+
         return df_disaggregated
 
     def disaggregate_forecast_with_dict(self, df: pd.DataFrame, col_to_disaggregate: str, disaggregation_column: str,
@@ -1329,9 +1342,9 @@ class Application:
 
     def weight_forecast(self, df):
 
-        df_grouped = df.groupby(['Fecha', 'Agente'])['Pronóstico'].sum().reset_index()
-        df_grouped.columns = ['Fecha', 'Agente', 'Total']
-        df_proportions = df.merge(df_grouped, on=['Fecha', 'Agente'], how='left')
+        df_grouped = df.groupby(['Fecha', 'Ruta'])['Pronóstico'].sum().reset_index()
+        df_grouped.columns = ['Fecha', 'Ruta', 'Total']
+        df_proportions = df.merge(df_grouped, on=['Fecha', 'Ruta'], how='left')
         df_proportions['Pronóstico %'] = df_proportions['Pronóstico'] / df_proportions['Total']
         df_proportions = df_proportions.fillna(0)
 
@@ -1384,9 +1397,8 @@ class Application:
                          'Pronóstico',
                          'Min',
                          'Max']
-            col_sizes = [12, 12, 40, 12, 12, 12]
+            col_sizes = [12, 12, 12, 40, 12, 12]
 
-        # If process is Demand Agent, 11 columns.
         elif process == 'Demand_Agent':
 
             if kwargs['weighted_forecast']:
@@ -1407,7 +1419,7 @@ class Application:
             # Column order
             '''col_order = ['Fecha creacion',
                          'Fecha',
-                         'Agente',
+                         'Ruta',
                          'Codigo producto',
                          'Nombre producto',
                          'Codigo cliente',
@@ -1418,7 +1430,7 @@ class Application:
                          'Max']'''
 
             col_order = ['Fecha',
-                         'Agente',
+                         'Ruta',
                          'Codigo producto',
                          'Nombre producto',
                          'Pronóstico %',
@@ -1432,11 +1444,11 @@ class Application:
         # If process is Forecast, 5 columns.
         elif process == 'Forecast':
             col_order = ['Fecha',
+                         'Ruta',
                          'Codigo',
                          'Nombre',
-                         'Grupo',
                          'Pronóstico']
-            col_sizes = [12, 12, 40, 12, 12]
+            col_sizes = [12, 12, 12, 40, 12]
 
         # If process is Metrics, 6 columns.
         else:
