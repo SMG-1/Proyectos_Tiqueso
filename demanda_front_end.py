@@ -18,7 +18,6 @@ from matplotlib.figure import Figure
 from win32api import GetSystemMetrics
 
 from demanda_back_end import Application
-from demanda_back_end import ConfigShelf
 
 plt.style.use('ggplot')
 bg_color = 'white'
@@ -486,6 +485,9 @@ class Main:
         process_ = self.back_end.config_shelf.send_parameter('Mode')
         self.update_gui(process_)
 
+        self.cbx_filter_route = None
+        self.cbx_filter_prod = None
+
         # Center the tkinter window on screen
         center_window(self.master,
                       self.screen_width,
@@ -551,7 +553,7 @@ class Main:
 
         # If the app is not installed, show a welcome screen.
         if not app_is_installed:
-            win = self.create_loading_screen(wait_5_seconds, 'Hola\nInstalando programa.')
+            self.create_loading_screen(wait_5_seconds, 'Hola\nInstalando programa.')
 
             self.master.deiconify()
 
@@ -613,17 +615,17 @@ class Main:
                                  bg=bg_color,
                                  text='Ruta')
 
-        cbx_filter_route = ttk.Combobox(self.frame_filters,
-                                        value=self.back_end.available_agents,
-                                        width=get_longest_str_length_from_list(self.back_end.available_agents) + 5)
+        self.cbx_filter_route = ttk.Combobox(self.frame_filters,
+                                             value=self.back_end.available_agents,
+                                             width=get_longest_str_length_from_list(self.back_end.available_agents) + 5)
 
         lbl_filter_prod = Label(self.frame_filters,
                                 bg=bg_color,
                                 text='Producto')
 
-        cbx_filter_prod = ttk.Combobox(self.frame_filters,
-                                       value=prod_list,
-                                       width=get_longest_str_length_from_list(prod_list) + 5)
+        self.cbx_filter_prod = ttk.Combobox(self.frame_filters,
+                                            value=prod_list,
+                                            width=get_longest_str_length_from_list(prod_list) + 5)
 
         # If process is Demand_Agent add an extra route filter on top
         if process == 'Demand_Agent':
@@ -631,25 +633,25 @@ class Main:
             lbl_filter_route.pack(fill=X)
 
             # Add the agent filter (Combobox)
-            cbx_filter_route.current(0)
-            cbx_filter_route.bind("<<ComboboxSelected>>",
-                                  self.cbx_agent_callback)
-            cbx_filter_route.pack(fill=X)
+            self.cbx_filter_route.current(0)
+            self.cbx_filter_route.bind("<<ComboboxSelected>>",
+                                       self.cbx_agent_callback)
+            self.cbx_filter_route.pack(fill=X)
 
         # Add the product filter name
         lbl_filter_prod.pack(fill=X)
 
         # Add the product filter (Combobox)
-        cbx_filter_prod.current(0)
-        cbx_filter_prod.bind("<<ComboboxSelected>>",
-                             self.refresh_views)
-        cbx_filter_prod.pack(fill=X)
+        self.cbx_filter_prod.current(0)
+        self.cbx_filter_prod.bind("<<ComboboxSelected>>",
+                                  self.refresh_views)
+        self.cbx_filter_prod.pack(fill=X)
 
     def cbx_agent_callback(self, event):
         """Callback for the agent filter combobox."""
 
         # Get the selected agent from the combobox.
-        agent = self.cbx_agent.get()
+        agent = self.cbx_filter_route.get()
 
         # Refresh the GUI (table and plot)
         self.refresh_views(event)
@@ -677,7 +679,7 @@ class Main:
     def configure_product_filter(self, product_list: list):
         """Change the product filter based on the agent's context."""
 
-        self.cbx_prod['values'] = product_list
+        self.cbx_filter_prod['values'] = product_list
 
     def clear_gui(self):
         """Function to clear data from the back end and the GUI."""
@@ -834,7 +836,6 @@ class Main:
             pass
 
         # Styles declaration
-        brand_green = '#005c2c'  # ticheese green
         yellow = '#ffff00'
         orange = '#e5a700'
         title_font_size = 16
@@ -1085,11 +1086,10 @@ class Main:
             self.back_end.refresh_predictions(self.active_process)
 
         # Get the selected item from the tree view.
-        # item_name = self.get_tree_selection()
-        sku_name = self.cbx_prod.get()
+        sku_name = self.cbx_filter_prod.get()
         filters = [sku_name]
         try:
-            agent = self.cbx_agent.get()
+            agent = self.cbx_filter_route.get()
             filters = [sku_name, agent]
         except AttributeError:
             pass
@@ -1173,7 +1173,6 @@ class Main:
 
         item = self.treev.selection()
         metric_name, metric_desc = self.back_end.dict_metric_desc[self.treev.item(item, "text")]
-        # print("you clicked on", self.treev.item(metric, "text"))
 
         self.open_window_pop_up('Info', f'{metric_name}: {metric_desc}')
 
@@ -1397,6 +1396,8 @@ class WindowSelectPath:
                            row=0,
                            column=3,
                            padx=5)
+
+        self.new_win = None
 
         # Center the window to the screen
         center_window(self.master, self.screen_width, self.screen_height)
@@ -2602,6 +2603,8 @@ class WindowSegmentOptions:
                                       column=0,
                                       pady=5,
                                       sticky='WE')
+
+        self.new_win = None
 
         # Center the window to the screen
         center_window(self.master, self.screen_width, self.screen_height)
