@@ -601,54 +601,49 @@ class Main:
         The filters added depend on the process parameter.
         """
 
-        self.lbl_name_agent = Label(self.frame_filters,
-                                    bg=bg_color,
-                                    text='Ruta')
-
-        self.cbx_agent = ttk.Combobox(self.frame_filters,
-                                      value=self.back_end.available_agents,
-                                      width=get_longest_str_length_from_list(self.back_end.available_agents) + 5)
-
-        self.lbl_name_prod = Label(self.frame_filters,
-                                   bg=bg_color,
-                                   text='Producto')
-
+        # If the process is Demand Agent, get available routes and available products per route to populate both filters
         if process == 'Demand_Agent':
-            agent = self.back_end.available_agents[0]
-            prod_list = self.back_end.prods_per_agent[agent]
-
+            route = self.back_end.available_agents[0]
+            prod_list = self.back_end.prods_per_agent[route]
+        # If the process is Demand, get available products to populate the filter
         else:
             prod_list = list(self.back_end.dict_products.values())
 
-        self.cbx_prod = ttk.Combobox(self.frame_filters,
-                                     value=prod_list,
-                                     width=get_longest_str_length_from_list(prod_list) + 5)
+        lbl_filter_route = Label(self.frame_filters,
+                                 bg=bg_color,
+                                 text='Ruta')
 
-        # If process is Demand_Agent add an extra Agent filter on top
+        cbx_filter_route = ttk.Combobox(self.frame_filters,
+                                        value=self.back_end.available_agents,
+                                        width=get_longest_str_length_from_list(self.back_end.available_agents) + 5)
+
+        lbl_filter_prod = Label(self.frame_filters,
+                                bg=bg_color,
+                                text='Producto')
+
+        cbx_filter_prod = ttk.Combobox(self.frame_filters,
+                                       value=prod_list,
+                                       width=get_longest_str_length_from_list(prod_list) + 5)
+
+        # If process is Demand_Agent add an extra route filter on top
         if process == 'Demand_Agent':
-            self.lbl_name_agent.grid(row=0,
-                                     column=0)
-            self.cbx_agent.current(0)
-            self.cbx_agent.bind("<<ComboboxSelected>>",
-                                self.cbx_agent_callback)
-            self.cbx_agent.grid(row=1,
-                                column=0)
+            # Add the filter name
+            lbl_filter_route.pack(fill=X)
 
-            row_lbl_prod = 2
-            row_cbx_prod = 3
+            # Add the agent filter (Combobox)
+            cbx_filter_route.current(0)
+            cbx_filter_route.bind("<<ComboboxSelected>>",
+                                  self.cbx_agent_callback)
+            cbx_filter_route.pack(fill=X)
 
-        else:
-            row_lbl_prod = 0
-            row_cbx_prod = 1
+        # Add the product filter name
+        lbl_filter_prod.pack(fill=X)
 
-        # Add the product filter (label and combobox.
-        self.lbl_name_prod.grid(row=row_lbl_prod,
-                                column=0)
-        self.cbx_prod.current(0)
-        self.cbx_prod.bind("<<ComboboxSelected>>",
-                           self.refresh_views)
-        self.cbx_prod.grid(row=row_cbx_prod,
-                           column=0)
+        # Add the product filter (Combobox)
+        cbx_filter_prod.current(0)
+        cbx_filter_prod.bind("<<ComboboxSelected>>",
+                             self.refresh_views)
+        cbx_filter_prod.pack(fill=X)
 
     def cbx_agent_callback(self, event):
         """Callback for the agent filter combobox."""
@@ -742,6 +737,7 @@ class Main:
             if agent == 'DEFAULT':
                 agent = self.back_end.available_agents[0]
             df_total = df_total[df_total['Ruta'] == agent]
+            df_total = df_total.drop(columns=['Unidad_Medida'])
 
         # Get selected data frame based on the sku parameter.
         sku_name = filters[0]
