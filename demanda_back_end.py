@@ -259,7 +259,7 @@ class ConfigShelf:
         self.config_dict = {'periods_fwd': 30,
                             'Mode': 'Demand',
                             'File_name': 'Pronóstico estadístico',
-                            'File_name_agent': 'Pronóstico por agente',
+                            'File_name_agent': 'Pronóstico por ruta',
                             'File_name_segmented': 'Pronóstico crítico',
                             'File_name_metrics': 'Métricas',
                             'Agg_viz': 'Diario',
@@ -1299,8 +1299,8 @@ class Application:
                                            'Ruta',
                                            'Codigo',
                                            'Nombre',
-                                           'Pronostico_disagg',
-                                           'Unidad_Medida']
+                                           'Unidad_Medida',
+                                           'Pronostico_disagg']
 
         # Drop unnecessary columns
         df_disaggregation_local = df_disaggregation_local[['Fecha', 'Ruta', 'Codigo', 'Pronostico_disagg']]
@@ -1428,27 +1428,44 @@ class Application:
                          'Unidad_Medida',
                          'Min',
                          'Max']'''
-
-            col_order = ['Fecha',
-                         'Ruta',
-                         'Codigo producto',
-                         'Nombre producto',
-                         'Pronóstico %',
-                         'Unidad_Medida',
-                         'Min',
-                         'Max']
+            if kwargs['weighted_forecast']:
+                col_order = ['Fecha',
+                             'Ruta',
+                             'Codigo producto',
+                             'Nombre producto',
+                             'Unidad_Medida',
+                             'Pronóstico %',
+                             'Min',
+                             'Max']
+            else:
+                col_order = ['Fecha',
+                             'Ruta',
+                             'Codigo producto',
+                             'Nombre producto',
+                             'Unidad_Medida',
+                             'Pronóstico',
+                             'Min',
+                             'Max']
             # Column sizes
             # col_sizes = [12, 12, 12, 12, 40, 12, 40, 12, 12, 12, 12]
             col_sizes = [12, 12, 12, 40, 12, 12, 12, 12]
 
         # If process is Forecast, 5 columns.
         elif process == 'Forecast':
-            col_order = ['Fecha',
-                         'Ruta',
-                         'Codigo',
-                         'Nombre',
-                         'Pronóstico']
-            col_sizes = [12, 12, 12, 40, 12]
+
+            if df.shape[1] == 4:
+                col_order = ['Fecha',
+                             'Codigo',
+                             'Nombre',
+                             'Pronóstico']
+                col_sizes = [12, 12, 40, 12]
+            else:
+                col_order = ['Fecha',
+                             'Ruta',
+                             'Codigo',
+                             'Nombre',
+                             'Pronóstico']
+                col_sizes = [12, 12, 12, 40, 12]
 
         # If process is Metrics, 6 columns.
         else:
