@@ -100,11 +100,26 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 
-def open_window(master, slave, *args, **kwargs):
+def open_window(master, slave, return_window: bool, *args, **kwargs):
+    """
+        Uses the tkinter destroy method on 'master' Toplevel and updates the canceled attribute of the class instance.
+
+        Args:
+            master: instance of the tkinter root.
+            slave: The window class that should be invoked.
+            return_window: determines if the slave object must be returned or not.
+
+        Returns:
+            win_obj: is only returned if return_window is True.
+        """
+
     new_win = Toplevel(master)
-    slave(*args, **kwargs)
+    win_obj = slave(new_win, *args, **kwargs)
     new_win.grab_set()
     new_win.wait_window()
+
+    if return_window:
+        return win_obj
 
 
 def wait_5_seconds():
@@ -213,6 +228,10 @@ class Main:
         # Model ready boolean
         self.model_ready = False
 
+        # Combobox filters
+        self.cbx_filter_route = None
+        self.cbx_filter_prod = None
+
         # Active process determines the layout of the GUI
         self.active_process = self.back_end.get_parameter('Mode')
 
@@ -235,7 +254,12 @@ class Main:
 
         # commands for the config sub menu
         self.sub_menu_config.add_command(label='Segmentación',
-                                         command=self.open_window_segment)
+                                         command=lambda: open_window(self.master,
+                                                                     WindowSegmentOptions,
+                                                                     False,
+                                                                     *[self.back_end,
+                                                                       self.screen_width,
+                                                                       self.screen_height]))
         if self.active_process == 'Forecast':
             self.sub_menu_config.entryconfig('Segmentación',
                                              state='normal')
@@ -245,7 +269,7 @@ class Main:
 
         # commands for the model sub menu
         self.sub_menu_data.add_command(label='Convertir a familias',
-                                       command=self.sub_menu_convert_callback)  # todo
+                                       command=self.sub_menu_convert_callback)
 
         # commands for the model sub menu
         self.sub_menu_model.add_command(label='Optimizar modelo',
@@ -485,9 +509,6 @@ class Main:
         process_ = self.back_end.config_shelf.send_parameter('Mode')
         self.update_gui(process_)
 
-        self.cbx_filter_route = None
-        self.cbx_filter_prod = None
-
         # Center the tkinter window on screen
         center_window(self.master,
                       self.screen_width,
@@ -572,7 +593,10 @@ class Main:
 
             # If the loading screen encountered an error, clear the GUI.
             if win.exited_with_error:
-                self.open_window_pop_up('Error', win.error)
+                # self.open_window_pop_up('Error', win.error)
+
+                open_window(self.master, WindowPopUpMessage, False, *['Error', win.error])
+
                 self.master.deiconify()
 
                 # Pack Top and Bottom Frames to the Main Frame
@@ -591,11 +615,6 @@ class Main:
 
                 # call function to update the plot and the table on the GUI
                 self.show_plot_and_table(process, ['DEFAULT', 'DEFAULT'], 0)
-
-                # if the segmented data sets haven't been created, clear the GUI
-                # except (KeyError, ValueError, FileNotFoundError, PermissionError, tkinter.TclError) as e:
-                # self.open_window_pop_up('Error', e)
-                # self.clear_gui()
 
     def add_filters(self, process: str):
         """
@@ -1018,10 +1037,13 @@ class Main:
         # update the periods_fwd parameter in the back end
         self.update_periods_fwd()
 
-        # Open confirmation pop up window.
-        operation_canceled = self.open_window_training_confirmation()
+        warning = 'El entrenamiento de los modelos puede ser un proceso extenso.\n ¿Desea continuar?'
+        win_obj = open_window(self.master, WindowPopUpMessageWithCancel, True, *['Alerta',
+                                                                                 warning,
+                                                                                 self.screen_width,
+                                                                                 self.screen_height])
 
-        if operation_canceled is False:
+        if win_obj.canceled is False:
             # spawn the thread which finds the best model
             # uses a thread to avoid freezing the program
             self.spawn_thread(process)
@@ -1174,17 +1196,19 @@ class Main:
         item = self.treev.selection()
         metric_name, metric_desc = self.back_end.dict_metric_desc[self.treev.item(item, "text")]
 
-        self.open_window_pop_up('Info', f'{metric_name}: {metric_desc}')
+        # self.open_window_pop_up('Info', f'{metric_name}: {metric_desc}')
+
+        open_window(self.master, WindowPopUpMessage, False, *['Info',
+                                                              f'{metric_name}: {metric_desc}',
+                                                              self.screen_width,
+                                                              self.screen_height])
 
     def open_window_select_work_path(self):
         """Open TopLevel to select path where the input files are located."""
 
-        # Declare a new Toplevel
-        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
-        self.new_win = Toplevel(self.master)
-        win_obj = WindowSelectWorkPath(self.new_win, self.back_end, self.screen_width, self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
+        # declare a WindowSelectWorkPath class instance
+        win_obj = open_window(self.master, WindowSelectWorkPath, True,
+                              *[self.back_end, self.screen_width, self.screen_height])
 
         # If the files were loaded successfully, run this block.
         if win_obj.successful_load:
@@ -1214,78 +1238,25 @@ class Main:
         # Get the active process from the backend.
         process_ = self.back_end.config_shelf.send_parameter('Mode')
 
-        # Declare Toplevel and a WindowExportFile class instance.
-        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
-        self.new_win = Toplevel(self.master)
-
         if process_ in ['Demand', 'Model'] and self.model_ready is False:
             warning = 'El modelo se debe entrenar antes de exportar la información.'
-            WindowPopUpMessage(self.new_win,
-                               'Alerta',
-                               warning,
-                               self.screen_width,
-                               self.screen_height)
-
+            open_window(self.master, WindowPopUpMessage, False, *['Alerta',
+                                                                  warning,
+                                                                  self.screen_width,
+                                                                  self.screen_height])
         else:
-            WindowExportFile(self.new_win, self.back_end, self.screen_width, self.screen_height, process_)
-
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
-
-    def open_window_segment(self):
-        """Open TopLevel to configure the forecast segmentation."""
-
-        # Declare Toplevel and a WindowSegmentOptions class instance.
-        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
-        self.new_win = Toplevel(self.master)
-        WindowSegmentOptions(self.new_win, self.back_end, self.screen_width, self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
-
-    def open_window_training_confirmation(self):
-        """Open TopLevel to configure the forecast segmentation."""
-
-        # Declare Toplevel and a WindowSegmentOptions class instance.
-        # Grab_set and wait_window to freeze the screen until the user closes the popup window.
-        self.new_win = Toplevel(self.master)
-        warning = 'El entrenamiento de los modelos puede ser un proceso extenso.\n ¿Desea continuar?'
-        win_obj = WindowPopUpMessageWithCancel(self.new_win,
-                                               'Alerta',
-                                               warning,
-                                               self.screen_width,
-                                               self.screen_height)
-
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
-
-        return win_obj.canceled
-
-    def open_window_pop_up(self, title, msg):
-        # open new TopLevel as a popup window
-        self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win,
-                           title,
-                           msg,
-                           self.screen_width,
-                           self.screen_height)
-
-        # freeze master window until user closes the pop up
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
+            open_window(self.master, WindowExportFile, False, *[self.back_end,
+                                                                self.screen_width,
+                                                                self.screen_height,
+                                                                process_])
 
     def sub_menu_convert_callback(self):
 
-        # Declare a new Toplevel
-        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
-        self.new_win = Toplevel(self.master)
-        win_obj = WindowSelectPath(self.new_win,
-                                   self.back_end,
-                                   self.screen_width,
-                                   self.screen_height,
-                                   'Recetas',
-                                   'BOM')
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
+        win_obj = open_window(self.master, WindowSelectPath, True, *[self.back_end,
+                                                                     self.screen_width,
+                                                                     self.screen_height,
+                                                                     'Recetas',
+                                                                     'BOM'])
 
         # If the operation was not canceled, get the path.
         if not win_obj.canceled:
@@ -1468,10 +1439,9 @@ class WindowSelectPath:
         dict_msg_options = {'BOM': msg_bom,
                             'Weighted_Forecast': msg_weighted_fcst}
 
-        self.new_win = Toplevel()
-        WindowHelp(self.new_win, self.screen_width, self.screen_height, dict_msg_options[self.path_name_back_end])
-        self.new_win.grab_set()
-        self.new_win.wait_window()
+        open_window(self.master, WindowHelp, False, *[self.screen_width,
+                                                      self.screen_height,
+                                                      dict_msg_options[self.path_name_back_end]])
 
 
 class WindowSelectWorkPath:
@@ -1783,7 +1753,10 @@ class WindowSelectWorkPath:
 
         # open PopUp warning if the Path Label is empty
         if self.lbl_path['text'] == '':
-            self.open_window_pop_up('Error', 'Debe seleccionar un directorio válido.')
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  'Debe seleccionar un directorio válido.',
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
         self.process = self.get_process_from_cbx_selection()
 
@@ -1797,8 +1770,11 @@ class WindowSelectWorkPath:
                 if validate_path(path_, is_file=True):
                     self.app.set_path(values[0], path_)
                 else:
-                    self.open_window_pop_up('Error',
-                                            f'El directorio al archivo de {values[1]} indicado es inválido.')
+                    open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                          f'El directorio al archivo de {values[1]}'
+                                                                          f' indicado es inválido.',
+                                                                          self.screen_width,
+                                                                          self.screen_height])
 
         else:
             # Get selected path
@@ -1819,11 +1795,18 @@ class WindowSelectWorkPath:
                         if validate_path(path_bom, is_file=True):
                             self.app.set_path('BOM', path_bom)
                         else:
-                            self.open_window_pop_up('Error',
-                                                    'El directorio al archivo de Recetas indicado es inválido.')
+                            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                                  'El directorio al archivo de Recetas'
+                                                                                  ' indicado es inválido.',
+                                                                                  self.screen_width,
+                                                                                  self.screen_height])
 
             else:
-                self.open_window_pop_up('Error', 'El directorio al archivo de Ventas indicado es inválido.')
+                open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                      'El directorio al archivo de Ventas'
+                                                                      ' indicado es inválido.',
+                                                                      self.screen_width,
+                                                                      self.screen_height])
 
         # create separate datasets for each of the unique products
         try:
@@ -1832,10 +1815,17 @@ class WindowSelectWorkPath:
             close_window(self, self.master, True)
 
         except ValueError as e:
-            self.open_window_pop_up('Error', e)
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  e,
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
         except PermissionError as e:
-            self.open_window_pop_up('Error', 'Debe cerrar el archivo antes de proceder:\n' + e.filename)
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  'Debe cerrar el archivo antes de'
+                                                                  ' proceder:\n' + e.filename,
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
     def remove_children_from_paths_frame(self):
         try:
@@ -1878,19 +1868,6 @@ class WindowSelectWorkPath:
         else:
             self.remove_section_from_grid([self.lbl_name_second_path, self.lbl_second_path,
                                            self.btn_browse_second_path])
-
-    def open_window_pop_up(self, title, msg):
-        # open new TopLevel as a popup window
-        self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win,
-                           title,
-                           msg,
-                           self.screen_width,
-                           self.screen_height)
-
-        # freeze master window until user closes the pop up
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
 
     def help_btn_callback(self):
 
@@ -1991,10 +1968,9 @@ class WindowSelectWorkPath:
                             'Calcular métricas': msg_metrics,
                             'Crear pronóstico por ruta': msg_forecast_route}
 
-        self.new_win = Toplevel()
-        WindowHelp(self.new_win, self.screen_width, self.screen_height, dict_msg_options[self.cbx_file_type.get()])
-        self.new_win.grab_set()
-        self.new_win.wait_window()
+        open_window(self.master, WindowHelp, False, *[self.screen_width,
+                                                      self.screen_height,
+                                                      dict_msg_options[self.cbx_file_type.get()]])
 
 
 class WindowSegmentManual:
@@ -2210,11 +2186,17 @@ class WindowSegmentManual:
 
         # If there are duplicated groups, show an error on a pop up window
         if len([item for item, count in collections.Counter(groups).items() if count > 1]) > 0:
-            self.open_window_pop_up('Error', 'No puede haber grupos duplicados.')
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  'No puede haber grupos duplicados.',
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
         # If the total isn't 1, show an Error on a pop up window.
         elif int(self.calc_sv_sum()) != 100:
-            self.open_window_pop_up('Error', 'El total debe sumar 100.')
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  'El total debe sumar 100.',
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
         else:
             new_dict = dict(zip(groups, sv_values))
@@ -2222,16 +2204,6 @@ class WindowSegmentManual:
             self.app.set_parameter('Segmentacion', new_dict)
 
             close_window(self, self.master, True)
-
-    def open_window_pop_up(self, title, msg):
-        self.new_win = Toplevel(self.master)
-        WindowPopUpMessage(self.new_win,
-                           title,
-                           msg,
-                           self.screen_width,
-                           self.screen_height)
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
 
 
 class WindowPopUpMessage:
@@ -2478,7 +2450,7 @@ class WindowExportFile:
         self.var_weight_fcst = IntVar()
         self.chkbtn_weight_fcst = Checkbutton(self.frame_master,
                                               bg=bg_color,
-                                              text='Ponderar pronóstico?',
+                                              text='¿Ponderar pronóstico?',
                                               variable=self.var_weight_fcst)
 
         if self.process == 'Demand_Agent':
@@ -2528,23 +2500,11 @@ class WindowExportFile:
 
         # Open pop up window with status message
         pop_up_args = [win_title, win_msg, self.screen_width, self.screen_height]
-        self.open_window(WindowPopUpMessage, *pop_up_args)
+
+        open_window(self.master, WindowPopUpMessage, False, *pop_up_args)
 
         # Close the window after exporting.
         close_window(self, self.master, False)
-
-    def open_window(self, window, *args, **kwargs):
-        """Open a window with a slave Toplevel, the master is frozen until the user closes the slave."""
-
-        # Declare the slave
-        self.new_win = Toplevel(self.master)
-
-        # Call the window class
-        window(self.new_win, *args, **kwargs)
-
-        # Freeze the master until user closes the slave.
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
 
     def browse_files(self):
         filename = filedialog.askdirectory(initialdir=self.app.file_paths_shelf.send_path('Working'),
@@ -2613,25 +2573,16 @@ class WindowSegmentOptions:
 
         user_selection = self.cbx_segment_options.get()
 
-        # Declare a new Toplevel
-        # grab_set and wait_window to wait for the main screen to freeze until this window is closed
-        self.new_win = Toplevel(self.master)
-
         if user_selection == 'Usar pronóstico ponderado':
-            win_obj = WindowSelectPath(self.new_win,
-                                       self.app,
-                                       self.screen_width,
-                                       self.screen_height,
-                                       'Pronóstico ponderado',
-                                       'Weighted_Forecast')
+            win_obj = open_window(self.master, WindowSelectPath, True, *[self.app,
+                                                                         self.screen_width,
+                                                                         self.screen_height,
+                                                                         'Pronóstico ponderado',
+                                                                         'Weighted_Forecast'])
         else:
-            win_obj = WindowSegmentManual(self.new_win,
-                                          self.app,
-                                          self.screen_width,
-                                          self.screen_height)
-
-        self.new_win.grab_set()
-        self.master.wait_window(self.new_win)
+            win_obj = open_window(self.master, WindowSegmentManual, True, *[self.app,
+                                                                            self.screen_width,
+                                                                            self.screen_height])
 
         if win_obj.canceled:
             close_window(self, self.master, True)
@@ -2644,23 +2595,24 @@ class WindowSegmentOptions:
         try:
             df_disaggregated = self.app.disaggregate_forecast_workflow(disaggregation_method)
 
-            new_win_export = Toplevel(self.master)
+            open_window(self.master, WindowExportFile, False, *[self.app,
+                                                                self.screen_width,
+                                                                self.screen_height,
+                                                                'Forecast'], **{'df': df_disaggregated})
+
+            '''new_win_export = Toplevel(self.master)
             WindowExportFile(new_win_export, self.app, self.screen_width, self.screen_height, 'Forecast',
                              df=df_disaggregated)
             new_win_export.grab_set()
-            new_win_export.wait_window()
+            new_win_export.wait_window()'''
 
             close_window(self, self.master, False)
 
         except PermissionError as e:
-            self.open_window_pop_up('Error', e)
-
-    def open_window_pop_up(self, title, msg):
-
-        new_win = Toplevel(self.master)
-        WindowPopUpMessage(new_win, title, msg, self.screen_width, self.screen_height)
-        new_win.grab_set()
-        new_win.wait_window()
+            open_window(self.master, WindowPopUpMessage, False, *['Error',
+                                                                  e,
+                                                                  self.screen_width,
+                                                                  self.screen_height])
 
 
 class WindowLoading:
